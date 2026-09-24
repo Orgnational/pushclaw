@@ -23,6 +23,13 @@ function fmtTime(unix) {
          `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+function report(err) {
+  $("view-hint").textContent = "⚠ " + String(err).slice(0, 160);
+  setTimeout(() => { $("view-hint").textContent = ""; }, 8000);
+}
+window.addEventListener("unhandledrejection", (e) => report(e.reason));
+window.addEventListener("error", (e) => report(e.message));
+
 function esc(s) {
   const div = document.createElement("div");
   div.textContent = s ?? "";
@@ -175,10 +182,12 @@ $("sel-all").addEventListener("click", () => {
 // 批量归档/删除（删除两步确认）
 $("sel-archive").addEventListener("click", async () => {
   if (!state.selected.size) return;
-  const ids = [...state.selected];
-  await invoke("archive_messages", { ids, archived: state.view !== "archive" });
-  state.selected.clear();
-  await loadHistory();
+  try {
+    const ids = [...state.selected];
+    await invoke("archive_messages", { ids, archived: state.view !== "archive" });
+    state.selected.clear();
+    await loadHistory();
+  } catch (err) { report(err); }
 });
 $("sel-delete").addEventListener("click", async () => {
   if (!state.selected.size) return;
@@ -188,14 +197,16 @@ $("sel-delete").addEventListener("click", async () => {
     setTimeout(() => {
       state.deleteArmed = false;
       $("sel-delete").textContent = "删除";
-    }, 3000);
+    }, 5000);
     return;
   }
   state.deleteArmed = false;
   $("sel-delete").textContent = "删除";
-  await invoke("delete_messages", { ids: [...state.selected] });
-  state.selected.clear();
-  await loadHistory();
+  try {
+    await invoke("delete_messages", { ids: [...state.selected] });
+    state.selected.clear();
+    await loadHistory();
+  } catch (err) { report(err); }
 });
 
 // 列表点击：选择模式切换勾选；否则开详情
@@ -210,8 +221,10 @@ $("list").addEventListener("click", async (e) => {
     card.classList.toggle("sel", state.selected.has(id));
     return;
   }
-  const m = await invoke("get_message", { id });
-  if (m) openDetail(m);
+  try {
+    const m = await invoke("get_message", { id });
+    if (m) openDetail(m);
+  } catch (err) { report(err); }
 });
 
 $("sync-btn").addEventListener("click", async () => {
