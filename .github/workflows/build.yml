@@ -32,6 +32,12 @@ jobs:
         working-directory: app
         run: npm install
 
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: app/src-tauri
+        shell: bash
+        run: node -e "const fs=require('fs');const f='tauri.conf.json';const j=JSON.parse(fs.readFileSync(f));j.version=process.env.GITHUB_REF_NAME.slice(1);fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');console.log('version ->',j.version)"
+
       - name: Build (macOS)
         if: matrix.target == 'macos'
         working-directory: app
