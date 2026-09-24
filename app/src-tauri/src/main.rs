@@ -21,7 +21,7 @@ pub struct AppState {
     pub connected: AtomicBool,
 }
 
-fn show_main(app: &tauri::AppHandle) {
+pub fn show_main(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
@@ -79,7 +79,7 @@ fn main() {
             TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
                 .icon_as_template(true)
-                .tooltip("Pushover Toolkit")
+                .tooltip("PushClaw")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {

@@ -1,7 +1,7 @@
 {
-  "name": "pushover-toolkit-app",
+  "name": "pushclaw-app",
   "private": true,
-  "version": "0.6.3",
+  "version": "0.7.0",
   "scripts": {
     "tauri": "tauri"
   },

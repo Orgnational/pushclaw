@@ -276,6 +276,10 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
     }
     for m in &new_msgs {
         let _ = app.emit("new-message", m);
+        // 官方指南：priority=2 须以醒目方式呈现直至用户手动确认 —— 自动弹出主窗口
+        if m.priority == 2 && !m.acked {
+            crate::show_main(&app);
+        }
     }
     // 系统通知：只弹新消息，一次最多 3 条防刷屏
     for m in new_msgs.iter().rev().take(3).rev() {
@@ -341,14 +345,24 @@ pub async fn ws_loop(app: tauri::AppHandle) {
             let _ = app.emit("ws-error", msg.clone());
             // E/A 帧：非正常断开后的服务端冷却/接管，通常等一会儿就恢复。
             // E 连续 3 次仍被拒 → 同名重新注册自愈（避免积压通知长时间无法接收）
-            if msg.contains("接管") || msg.contains("永久错误") {
-                if msg.contains("永久错误") {
-                    e_streak += 1;
-                    if e_streak >= 3 {
-                        let _ = re_register(&app).await;
-                        e_streak = 0;
-                        continue;
+            if msg.contains("接管") {
+                // 官方指南：A 帧（他处登录）不得自动重连 —— 等待用户重新登录触发会话变更
+                let _ = app.emit("ws-error", "此设备已在别处登录，等待重新登录…".to_string());
+                let st = app.state::<AppState>();
+                let mut rx = st.session_tx.subscribe();
+                let _ = rx.changed().await;
+                continue;
+            }
+            if msg.contains("永久错误") {
+                e_streak += 1;
+                if e_streak >= 3 {
+                    if let Err(e) = re_register(&app).await {
+                        let _ = app.emit("ws-error",
+                            format!("自动重注册失败（{e}），如持续异常请在应用内重新登录"));
+                        tokio::time::sleep(Duration::from_secs(300)).await;
                     }
+                    e_streak = 0;
+                    continue;
                 }
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 continue;

@@ -36,6 +36,20 @@ function esc(s) {
   return div.innerHTML;
 }
 
+// ---------- 紧急横幅（官方指南：priority=2 醒目呈现直至手动确认） ----------
+async function refreshEmergencyBar() {
+  const unacked = (await invoke("history", { limit: 50, priority: 2, archived: false }))
+    .filter((m) => !m.acked);
+  const bar = $("emergency-bar");
+  if (!unacked.length) { bar.classList.add("hidden"); bar.innerHTML = ""; return; }
+  bar.classList.remove("hidden");
+  bar.innerHTML = `<div class="emg-title">🚨 ${unacked.length} 条紧急消息待确认</div>` +
+    unacked.map((m) => `<div class="emg-item" data-id="${m.id}">
+      <span class="emg-text">${esc(m.title || m.app || "-")} — ${esc(m.message.slice(0, 60))}</span>
+      <button class="danger emg-ack" data-receipt="${esc(m.receipt)}">确认</button>
+    </div>`).join("");
+}
+
 // ---------- 列表 ----------
 async function loadHistory() {
   const msgs = await invoke("history", {
@@ -69,6 +83,7 @@ async function loadHistory() {
   }
   const scope = state.view === "archive" ? "归档" : "";
   $("count-label").textContent = `${scope}显示 ${msgs.length} 条`;
+  refreshEmergencyBar().catch(console.error);
 }
 
 function refreshBatchBar() {
@@ -288,8 +303,22 @@ $("detail-delete").addEventListener("click", async () => {
   await loadHistory();
 });
 
+// 紧急横幅上的确认按钮（事件委托）
+$("emergency-bar").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".emg-ack");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true; btn.textContent = "确认中…";
+  try {
+    await invoke("ack", { receipt: btn.dataset.receipt });
+    await loadHistory();
+  } catch (err) { report(err); btn.disabled = false; btn.textContent = "确认"; }
+});
+
 // Rust 侧事件
-listen("new-message", async () => { if (state.view === "inbox") await loadHistory(); });
+listen("new-message", async () => {
+  if (state.view === "inbox") await loadHistory();
+  refreshEmergencyBar().catch(console.error);
+});
 listen("ws-status", (ev) => {
   $("conn-dot").className = "dot " + (ev.payload === "connected" ? "on" : "off");
 });
@@ -306,5 +335,5 @@ listen("navigate-latest", async (ev) => {
 // ---------- 启动 ----------
 (async () => {
   const st = await refreshStatus();
-  if (st.configured) await loadHistory();
+  if (st.configured) { await loadHistory(); await refreshEmergencyBar(); }
 })();

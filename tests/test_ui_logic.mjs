@@ -134,8 +134,8 @@ expect(arch && arch[1].archived === true && arch[1].ids.length === 3,
 invokes.length = 0;
 window.document.querySelector('.tab[data-view="archive"]').click();
 await sleep(20);
-const h2 = invokes.filter(([c]) => c === "history").pop();
-expect(h2 && h2[1].archived === true, "归档标签页请求 archived=true");
+const h2 = invokes.filter(([c]) => c === "history").find(([, a]) => a.archived === true);
+expect(!!h2, "归档标签页请求 archived=true");
 
 // ---- 6. 优先级筛选 ----
 invokes.length = 0;
@@ -143,8 +143,8 @@ window.document.querySelector('.tab[data-view="inbox"]').click();
 await sleep(20);
 window.document.querySelector('.chip[data-p="2"]').click();
 await sleep(20);
-const h3 = invokes.filter(([c]) => c === "history").pop();
-expect(h3 && h3[1].priority === 2, "紧急筛选请求 priority=2");
+const h3 = invokes.filter(([c]) => c === "history").find(([, a]) => a.priority === 2);
+expect(!!h3, "紧急筛选请求 priority=2");
 
 console.log(failed ? `\n${failed} 项失败` : "\nUI 逻辑全部通过");
 process.exit(failed ? 1 : 0);

@@ -308,3 +308,20 @@ footer {
 #detail-actions .danger, #detail-actions .urgent-btn { background: #c0392b; color: #fff; }
 #detail-actions .danger:hover, #detail-actions .urgent-btn:hover { background: #d0453a; }
 #detail-url { color: #8a5a1f; font-size: 13px; font-weight: 600; }
+
+/* ---------- 紧急横幅 ---------- */
+#emergency-bar {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(224, 85, 85, .45);
+  background: linear-gradient(90deg, rgba(224, 85, 85, .16), rgba(224, 85, 85, .06));
+  animation: slideDown .18s ease;
+}
+#emergency-bar.hidden { display: none; }
+.emg-title { font-weight: 700; font-size: 13px; color: var(--urgent); margin-bottom: 6px; }
+.emg-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 0; font-size: 13px;
+}
+.emg-item + .emg-item { border-top: 1px dashed rgba(224, 85, 85, .2); }
+.emg-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.emg-ack { padding: 3px 12px; font-size: 12px; flex: none; }
