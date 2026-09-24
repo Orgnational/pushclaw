@@ -1,4 +1,6 @@
-# Pushover Toolkit
+# PushClaw
+
+> 应用名 PushClaw（遵循 Pushover Open Client 命名规范：第三方客户端名称不得含 "Pushover"）；本仓库/项目目录名保留 pushover-toolkit。
 
 Pushover 收发命令行工具箱：**强提醒发送端 + 桌面接收端**，纯 Python 标准库（零第三方依赖），macOS / Windows 通用。
 
@@ -90,7 +92,7 @@ python3 -m pip install --quiet build && python3 -m build
 
 ## 桌面端（独立应用）
 
-不想跑命令行？桌面端是独立应用：登录一次，托盘常驻，通知归属 "Pushover Toolkit"，点击通知直达历史窗口。见 [docs/APP.md](docs/APP.md)。
+不想跑命令行？桌面端（PushClaw）是独立应用：登录一次，托盘常驻，通知归属 "PushClaw"，点击通知直达历史窗口。见 [docs/APP.md](docs/APP.md)。
 
 ## 文档
 

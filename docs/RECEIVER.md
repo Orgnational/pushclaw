@@ -58,7 +58,7 @@ po-receive run
 - **设备互踢**：同一设备名两个会话同时在线，后连者接管（ws `A` 帧），接收端会报错退出——两台机器务必用不同 `--name` 注册
 - **重连**：断线后指数退避（3s 起，上限 60s）；`E` 帧为永久错误（需重新 login）
 - **紧急消息**：priority=2 的重试由服务端驱动，与本接收端是否在线无关；`ack` 后全设备静默。发送端的 `receipt` 子命令可查确认状态
-- **Toast 归属与点击**（v0.3.0）：通知由自建的 `PushoverToolkit.app` 小程序发出（归属显示 "Pushover Toolkit"，不再出现"脚本编辑器"），**点击通知**会打开消息自带链接，无链接则打开本地历史网页对应条目。小程序由接收端自动构建（osacompile，位于 `~/.local/share/pushover/`）；**首次通知若没弹出，去 系统设置→通知→Pushover Toolkit 允许一次**。降级链：applet → terminal-notifier → osascript。Windows 侧 `pip install windows-toasts` 后走 WinRT
+- **Toast 归属与点击**（v0.3.0）：通知由 CLI 接收端自建的 `PushoverToolkit.app` 小程序发出（CLI 场景沿用；桌面端 PushClaw 的通知归属为应用本体），不再出现"脚本编辑器"），**点击通知**会打开消息自带链接，无链接则打开本地历史网页对应条目。小程序由接收端自动构建（osacompile，位于 `~/.local/share/pushover/`）；**首次通知若没弹出，去 系统设置→通知→PushoverToolkit 允许一次**。降级链：applet → terminal-notifier → osascript。Windows 侧 `pip install windows-toasts` 后走 WinRT
 - **本地历史网页**：`run` 时自动在 `http://127.0.0.1:8899`（仅本机可访问）提供深色主题的历史页面，全文渲染（html 消息按原始 HTML 渲染）、紧急/高优标记、消息链接可点、点击 toast 定位到对应条目（`#msg-<id>` 高亮）。端口可用 `--http-port` 或 `PUSHOVER_HTTP_PORT` 改
 - **合规**：Open Client API 要求界面注明非官方、不用 Pushover 品牌、请求带 UA、运行在用户自己设备上
 
