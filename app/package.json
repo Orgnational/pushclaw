@@ -1,7 +1,7 @@
 {
   "name": "pushover-toolkit-app",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.3",
   "scripts": {
     "tauri": "tauri"
   },

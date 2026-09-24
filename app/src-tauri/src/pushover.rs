@@ -5,21 +5,114 @@ use crate::AppState;
 use anyhow::{anyhow, bail, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
 
-pub const API: &str = "https://api.pushover.net/1";
-pub const WS_URL: &str = "wss://client.pushover.net/push";
-pub const UA: &str = concat!("pushover-toolkit-app/", env!("CARGO_PKG_VERSION"), " (unofficial)");
+pub const WS_HOST: &str = "client.pushover.net";
+
+/// DNS 解析：系统解析器优先，失败走 DoH（1.1.1.1/8.8.8.8，IP 字面量无需再解析）。
+/// 返回全部地址且 IPv4 优先（本机无 IPv6 连通性，v6 在前会撞 Network unreachable）。
+async fn resolve_host(host: &str, port: u16) -> Result<Vec<std::net::SocketAddr>> {
+    let h = host.to_string();
+    let std_try = tokio::task::spawn_blocking(move || {
+        use std::net::ToSocketAddrs;
+        let v: Vec<std::net::SocketAddr> = (h.as_str(), port)
+            .to_socket_addrs()
+            .map(|it| it.collect())
+            .unwrap_or_default();
+        v
+    }).await.unwrap_or_default();
+    let mut addrs = std_try;
+    addrs.sort_by_key(|a| !a.is_ipv4());
+    if !addrs.is_empty() {
+        return Ok(addrs);
+    }
+    eprintln!("[dns] 系统解析 {host} 失败，尝试 DoH");
+    for server in ["1.1.1.1", "8.8.8.8"] {
+        let url = format!("https://{server}/dns-query?name={host}&type=A");
+        if let Ok(resp) = reqwest::Client::new()
+            .get(&url)
+            .header("accept", "application/dns-json")
+            .timeout(Duration::from_secs(6))
+            .send()
+            .await
+        {
+            if let Ok(v) = resp.json::<Value>().await {
+                let ips: Vec<std::net::SocketAddr> = v.get("Answer")
+                    .and_then(|a| a.as_array()).map(|arr| arr.iter()
+                        .filter(|x| x.get("type").and_then(|t| t.as_i64()) == Some(1))
+                        .filter_map(|x| x.get("data").and_then(|d| d.as_str()))
+                        .filter_map(|ip| format!("{ip}:{port}").parse().ok())
+                        .collect()).unwrap_or_default();
+                if !ips.is_empty() {
+                    eprintln!("[dns] DoH({server}) 解析 {host} -> {ips:?}");
+                    return Ok(ips);
+                }
+            }
+        }
+    }
+    bail!("域名 {host} 解析失败（系统与 DoH 均失败）")
+}
+
+/// reqwest 自定义解析器：REST 层共用同样的 DoH 兜底。
+#[derive(Clone)]
+struct DoHResolver;
+
+impl reqwest::dns::Resolve for DoHResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let addrs = resolve_host(&host, 443)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+            Ok(Box::new(addrs.into_iter())
+                as Box<dyn Iterator<Item = std::net::SocketAddr> + Send>)
+        })
+    }
+}
 
 fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(UA)
+        .dns_resolver(Arc::new(DoHResolver))
         .build()
         .expect("构建 HTTP 客户端失败")
 }
+
+/// ws 连接：自解析 IP 直连 + TLS SNI 用真域名 + 在 TLS 流上做 ws 握手。
+async fn dial_ws() -> Result<tokio_tungstenite::WebSocketStream<
+    tokio_rustls::client::TlsStream<tokio::net::TcpStream>>> {
+    let addrs = resolve_host(WS_HOST, 443).await?;
+    let mut tcp = None;
+    for addr in &addrs {
+        match tokio::net::TcpStream::connect(addr).await {
+            Ok(t) => { tcp = Some(t); break; }
+            Err(e) => eprintln!("[dial] {addr} 失败: {e}"),
+        }
+    }
+    let tcp = tcp.ok_or_else(|| anyhow!("所有地址均无法连接"))?;
+    tcp.set_nodelay(true).ok();
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let cfg = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let sni = rustls::pki_types::ServerName::try_from(WS_HOST.to_string())
+        .map_err(|e| anyhow!("SNI 名称非法: {e}"))?;
+    let tls = tokio_rustls::TlsConnector::from(Arc::new(cfg))
+        .connect(sni, tcp)
+        .await?;
+    let req = WS_URL.into_client_request()?;
+    let (ws, _) = tokio_tungstenite::client_async(req, tls).await?;
+    Ok(ws)
+}
+
+pub const API: &str = "https://api.pushover.net/1";
+pub const WS_URL: &str = "wss://client.pushover.net/push";
+pub const UA: &str = concat!("pushover-toolkit-app/", env!("CARGO_PKG_VERSION"), " (unofficial)");
 
 /// 错误消息里提取服务端 errors 数组。
 fn api_errors(body: &Value) -> String {
@@ -95,6 +188,21 @@ pub async fn fetch_messages(secret: &str, device_id: &str) -> Result<Vec<Value>>
         .unwrap_or_default())
 }
 
+/// 通知服务端删除本设备队列中 ≤ highest 的消息（本地库已是档案，队列只留未拉取的）。
+pub async fn prune_server(secret: &str, device_id: &str, highest: i64) -> Result<()> {
+    let r = client()
+        .post(format!("{API}/devices/{device_id}/update_highest_message.json"))
+        .form(&[("secret", secret), ("message", &highest.to_string())])
+        .send()
+        .await?;
+    let body: Value = r.json().await?;
+    if body.get("status").and_then(|s| s.as_i64()) == Some(1) {
+        Ok(())
+    } else {
+        bail!("清理队列失败: {}", api_errors(&body))
+    }
+}
+
 pub async fn acknowledge(secret: &str, receipt: &str) -> Result<()> {
     let r = client()
         .post(format!("{API}/receipts/{receipt}/acknowledge.json"))
@@ -140,6 +248,19 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
     eprintln!("[pushover] 拉取到 {} 条", msgs.len());
     if msgs.is_empty() {
         return Ok(0);
+    }
+    // 入库后清理服务端队列：取本次最大 id，之后每次只增量传输
+    let highest = msgs.iter().filter_map(|m| match m.get("id") {
+        Some(Value::Number(n)) => n.as_i64(),
+        Some(Value::String(s)) => s.parse::<i64>().ok(),
+        _ => None,
+    }).max();
+    if let Some(h) = highest {
+        if let Err(e) = prune_server(&sess.secret, &sess.device_id, h).await {
+            eprintln!("[pushover] 队列清理失败（下次重试）: {e}");
+        } else {
+            eprintln!("[pushover] 服务端队列已清理至 id={h}");
+        }
     }
     let new_msgs = {
         let st = app.state::<AppState>();
@@ -247,8 +368,7 @@ fn set_connected(app: &tauri::AppHandle, on: bool) {
 }
 
 async fn run_connection(app: &tauri::AppHandle, sess: &Session) -> Result<()> {
-    let request = WS_URL.into_client_request()?;
-    let (ws, _) = match tokio_tungstenite::connect_async(request).await {
+    let ws = match dial_ws().await {
         Ok(x) => { eprintln!("[ws] 已连接"); x }
         Err(e) => { eprintln!("[ws] 连接失败: {e}"); return Err(e.into()); }
     };

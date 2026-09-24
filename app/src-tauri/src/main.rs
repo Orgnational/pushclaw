@@ -29,6 +29,9 @@ fn show_main(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    // rustls 提供者歧义防护（tokio-tungstenite 间接引入 aws-lc-rs 与 ring 并存）
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let db_path = store::db_path();
     let conn = store::open(&db_path).expect("打开历史库失败");
     let session = store::load_session();
