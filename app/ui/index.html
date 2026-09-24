@@ -11,7 +11,7 @@
   <div id="login-view" class="hidden">
     <div class="login-card">
       <div class="brand">
-        <div class="brand-icon">🐾</div>
+        <svg class="claw brand-claw" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><path d="M5 3.2 C5.9 6 6.6 10.5 6.2 15.5 C6 18 5.4 20 4.9 20.8 C4.3 19.6 3.6 16.5 3.7 12.6 C3.8 8.6 4.4 5.2 5 3.2 Z"/><path d="M12 2 C13.1 5.4 13.9 10.6 13.5 16.4 C13.3 19.4 12.6 21.8 12 22.8 C11.3 21.4 10.5 17.7 10.6 13.2 C10.7 8.5 11.4 4.5 12 2 Z"/><path d="M19 3.2 C19.6 5.2 20.2 8.6 20.3 12.6 C20.4 16.5 19.7 19.6 19.1 20.8 C18.6 20 17.9 18 17.8 15.5 C17.4 10.5 18.1 6 19 3.2 Z"/></g></svg>
         <h1>Pushover Toolkit</h1>
         <p class="muted">登录你的 Pushover 账号，本机将注册为一台接收设备<br>
         <span class="small">需要桌面许可 · 非官方客户端 · 凭据仅存本机</span></p>
@@ -31,8 +31,12 @@
   <!-- 主视图 -->
   <div id="main-view" class="hidden">
     <header>
-      <div class="status">
-        <span id="conn-dot" class="dot off" title="连接状态"></span>
+      <div class="brand-row">
+        <svg class="claw" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><path d="M5 3.2 C5.9 6 6.6 10.5 6.2 15.5 C6 18 5.4 20 4.9 20.8 C4.3 19.6 3.6 16.5 3.7 12.6 C3.8 8.6 4.4 5.2 5 3.2 Z"/><path d="M12 2 C13.1 5.4 13.9 10.6 13.5 16.4 C13.3 19.4 12.6 21.8 12 22.8 C11.3 21.4 10.5 17.7 10.6 13.2 C10.7 8.5 11.4 4.5 12 2 Z"/><path d="M19 3.2 C19.6 5.2 20.2 8.6 20.3 12.6 C20.4 16.5 19.7 19.6 19.1 20.8 C18.6 20 17.9 18 17.8 15.5 C17.4 10.5 18.1 6 19 3.2 Z"/></g></svg>
+        <span class="app-name">Pushover Toolkit</span>
+      </div>
+      <div class="status" id="status-pill" title="连接状态">
+        <span id="conn-dot" class="dot off"></span>
         <span id="device-label" class="muted"></span>
       </div>
       <nav class="tabs">
@@ -77,6 +81,7 @@
       <div id="detail-head">
         <span id="detail-flag" class="p"></span>
         <span id="detail-title" class="t"></span>
+        <time id="detail-time"></time>
         <button id="detail-close" title="关闭">✕</button>
       </div>
       <div id="detail-body"></div>

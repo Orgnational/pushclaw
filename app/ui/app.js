@@ -46,18 +46,23 @@ async function loadHistory() {
   });
   const list = $("list");
   if (!msgs.length) {
-    list.innerHTML = `<p class="muted" style="text-align:center;padding:40px 0">${
-      state.view === "archive" ? "归档是空的" : "还没有消息 — 从发送端发一条试试"}</p>`;
+    list.innerHTML = `<div class="empty">
+      <svg class="claw" viewBox="0 0 24 24"><g fill="currentColor"><path d="M5 3.2 C5.9 6 6.6 10.5 6.2 15.5 C6 18 5.4 20 4.9 20.8 C4.3 19.6 3.6 16.5 3.7 12.6 C3.8 8.6 4.4 5.2 5 3.2 Z"/><path d="M12 2 C13.1 5.4 13.9 10.6 13.5 16.4 C13.3 19.4 12.6 21.8 12 22.8 C11.3 21.4 10.5 17.7 10.6 13.2 C10.7 8.5 11.4 4.5 12 2 Z"/><path d="M19 3.2 C19.6 5.2 20.2 8.6 20.3 12.6 C20.4 16.5 19.7 19.6 19.1 20.8 C18.6 20 17.9 18 17.8 15.5 C17.4 10.5 18.1 6 19 3.2 Z"/></g></svg>
+      <p>${state.view === "archive" ? "归档是空的" : "还没有消息"}</p>
+      <p class="small">${state.view === "archive" ? "在消息页选中后归档的内容会出现在这里" : "从发送端 po-send 发一条试试"}</p>
+    </div>`;
   } else {
     list.innerHTML = msgs.map((m) => {
-      const flag = m.priority === 2 ? "!" : m.priority === 1 ? "↑" : "";
+      const flag = m.priority === 2 ? '<span class="flag f2">紧急</span>'
+                 : m.priority === 1 ? '<span class="flag f1">高优</span>' : "";
       const title = m.title || m.app || "-";
       const sel = state.selected.has(m.id);
       const cb = state.selecting ? `<span class="cb"></span>` : "";
-      return `<div class="m ${state.selecting ? "selectable" : ""} ${sel ? "sel" : ""}"
+      const pcls = m.priority === 2 ? "p2" : m.priority === 1 ? "p1" : "";
+      return `<div class="m ${pcls} ${state.selecting ? "selectable" : ""} ${sel ? "sel" : ""}"
                    data-id="${m.id}">
-        <time>${fmtTime(m.date)}</time>${cb}<span class="p">${flag}</span>
-        <span class="t">${esc(title)}</span>
+        <div class="m-top">${cb}${flag}<span class="t">${esc(title)}</span>
+          <time>${fmtTime(m.date)}</time></div>
         <pre>${esc(m.message).replace(/\n/g, "<br>")}</pre>
       </div>`;
     }).join("");
@@ -88,6 +93,7 @@ function openDetail(m) {
     m.priority === 2 ? "!" : m.priority === 1 ? "↑" : "";
   $("detail-flag").style.display = m.priority === 2 || m.priority === 1 ? "" : "none";
   $("detail-title").textContent = m.title || m.app || "-";
+  $("detail-time").textContent = fmtTime(m.date);
   const body = $("detail-body");
   if (m.html) { body.innerHTML = `<pre>${m.message}</pre>`; }
   else { body.innerHTML = `<pre>${esc(m.message)}</pre>`; }
