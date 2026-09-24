@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pushover Toolkit</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 登录视图 -->
+  <div id="login-view" class="hidden">
+    <div class="login-card">
+      <div class="brand">
+        <div class="brand-icon">🐾</div>
+        <h1>Pushover Toolkit</h1>
+        <p class="muted">登录你的 Pushover 账号，本机将注册为一台接收设备<br>
+        <span class="small">需要桌面许可 · 非官方客户端 · 凭据仅存本机</span></p>
+      </div>
+      <form id="login-form">
+        <label>邮箱<input id="f-email" type="email" required autocomplete="username" /></label>
+        <label>密码<input id="f-password" type="password" required autocomplete="current-password" /></label>
+        <label>两步验证码 <span class="muted small">（开启了两步验证才填）</span>
+          <input id="f-twofa" type="text" inputmode="numeric" placeholder="可选" /></label>
+        <label>设备名<input id="f-device" type="text" value="mac-app" required pattern="[A-Za-z0-9_-]{1,25}" /></label>
+        <div id="login-error" class="error hidden"></div>
+        <button id="login-btn" type="submit">登录并注册本机</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 主视图 -->
+  <div id="main-view" class="hidden">
+    <header>
+      <div class="status">
+        <span id="conn-dot" class="dot off" title="连接状态"></span>
+        <span id="device-label" class="muted"></span>
+      </div>
+      <input id="search" type="search" placeholder="搜索历史消息…" />
+    </header>
+    <main id="list"></main>
+    <footer>
+      <span id="count-label"></span>
+      <button id="sync-btn" title="立即拉取">同步</button>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

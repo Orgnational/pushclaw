@@ -5,8 +5,10 @@ import math
 
 from PIL import Image, ImageDraw
 
-S = 128
-OUT = str(Path(__file__).parent.parent / "assets" / "icon_128.png")
+import sys
+S = int(sys.argv[1]) if len(sys.argv) > 1 else 128
+OUT = (sys.argv[2] if len(sys.argv) > 2
+       else str(Path(__file__).parent.parent / "assets" / "icon_128.png"))
 
 
 def qbez(p0, p1, p2, n=28):

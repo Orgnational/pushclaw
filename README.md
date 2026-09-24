@@ -13,9 +13,11 @@ pushover-toolkit/
 ├── src/
 │   ├── pushover_sender.py    # 发送端：send / validate / receipt
 │   └── pushover_receiver.py  # 接收端：login / register / run / history / ack / selftest
+├── app/                      # 桌面端（Tauri）：窗口/托盘/原生通知
 ├── docs/
 │   ├── SENDER.md             # 发送端详解（用例、参数速查、JS/curl 等价实现）
-│   └── RECEIVER.md           # 接收端详解（协议、DNS 兜底、行为边界、回归测试）
+│   ├── RECEIVER.md           # 接收端详解（协议、DNS 兜底、行为边界、回归测试）
+│   └── APP.md                # 桌面端详解（构建、Windows/CI、与 CLI 的关系）
 ├── tests/
 │   └── test_receiver_e2e.py  # 端到端集成测试（模拟服务端，无需账号）
 ├── assets/                   # 图标与测试图片
@@ -85,6 +87,10 @@ python3 -m pip install --quiet build && python3 -m build
 5. 接收端：`po-receive login ...` → `po-receive register --name <该机器的名字>` → `po-receive run`
 
 > Windows 常驻建议：`start /b po-receive run`，或注册为计划任务开机自启；macOS 可用 LaunchAgent（Phase 2 计划内置）。
+
+## 桌面端（独立应用）
+
+不想跑命令行？桌面端是独立应用：登录一次，托盘常驻，通知归属 "Pushover Toolkit"，点击通知直达历史窗口。见 [docs/APP.md](docs/APP.md)。
 
 ## 文档
 

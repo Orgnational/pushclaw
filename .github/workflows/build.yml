@@ -1,0 +1,39 @@
+name: build-desktop
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --bundles app,dmg
+          - os: windows-latest
+            args: --bundles msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend deps
+        working-directory: app
+        run: npm install
+      - name: Build Tauri app
+        working-directory: app
+        run: npx tauri build ${{ matrix.args }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pushover-toolkit-${{ matrix.os }}
+          path: |
+            app/src-tauri/target/release/bundle/macos/*.app
+            app/src-tauri/target/release/bundle/dmg/*.dmg
+            app/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

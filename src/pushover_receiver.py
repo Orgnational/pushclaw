@@ -293,10 +293,12 @@ def build_toast_applet() -> Path | None:
         os.unlink(src)
     # 应用名与后台属性（不进 Dock、无窗口）
     pb, plist = "/usr/libexec/PlistBuddy", app / "Contents" / "Info.plist"
-    subprocess.run([pb, "Set", ":CFBundleName", "Pushover Toolkit", str(plist)],
-                   capture_output=True)
-    subprocess.run([pb, "Add", ":LSUIElement", "bool", "true", str(plist)],
-                   capture_output=True)   # 已存在时会失败，忽略
+    for cmd in ("Set :CFBundleName Pushover Toolkit",
+                "Set :CFBundleDisplayName Pushover Toolkit",
+                "Add :CFBundleDisplayName string Pushover Toolkit",
+                "Add :LSUIElement bool true"):
+        subprocess.run([pb, "-c", cmd, str(plist)], capture_output=True)
+        # Add 在键已存在时报错、Set 在键不存在时报错，二者互补，失败忽略
     marker.write_text(__version__)
     return next(iter(exe_dir.glob("*")), None)
 
