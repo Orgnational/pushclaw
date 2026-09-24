@@ -23,6 +23,8 @@ app/
 - **历史窗口**：深色卡片列表、搜索、富文本渲染、priority 标记；priority=2 消息带"确认（全设备静默）"按钮
 - **托盘**：左键点击显示/隐藏窗口；菜单：显示主窗口 / 立即同步 / 退出；关窗即隐藏不退出
 - **保活**：空闲 30s 发 `#`；180s 无帧重连；断线指数退避（3s→60s）；重新登录自动换会话
+- **E/A 帧自愈**：进程被强杀后重连，服务端会对该设备短暂返回 `E`（REST 不受影响）；应用按 60s 退避重试即可恢复。若持续 'E'，在 pushover.net 设备页删除该设备后在应用里用同名重新登录
+- **设备名不唯一**：同名重新注册会生成新 device_id，旧条目需在官网设备页手动清理（账户上限 10 台）
 
 ## 数据位置（与 CLI 版独立，可并存但设备名必须不同）
 
@@ -56,8 +58,8 @@ npx tauri build --bundles msi     # 产出 .msi 安装包
 
 无 Windows 机器时可用 CI 构建：仓库已带 `.github/workflows/build.yml`（push tag 同时产出 mac .app/.dmg 与 win .msi 的 Release 附件）。
 
-## 与 CLI 版的关系
+## 与 CLI 版的关系（替代，不是并存）
 
-- CLI（`po-send`/`po-receive`）保留：发送端日常用 `po-send`；接收端适合 SSH/服务器场景
-- 应用端与 CLI 接收端**各注册一台设备**（如 `mac-app` 与 `mac-air-desktop`），可同时在线
-- 发送端定向：`po-send "..." -d mac-app` 只让应用所在的机器响
+- 桌面端是 CLI 接收端的**替代品**：同一台机器上用**相同的设备名**（如 `mac-air-desktop`），登录视图里填同名即可接管；**接管前必须停掉 `po-receive run`**（同设备双会话会互踢）
+- 发送端 `po-send` 不受影响，`-d mac-air-desktop` 照常定向
+- CLI 接收端保留用于 SSH/服务器等无 GUI 场景

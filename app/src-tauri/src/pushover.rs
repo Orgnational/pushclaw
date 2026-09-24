@@ -197,12 +197,13 @@ pub async fn ws_loop(app: tauri::AppHandle) {
         let _ = app.emit("ws-status", "reconnecting");
         if let Err(e) = outcome {
             let msg = e.to_string();
+            eprintln!("[ws] 断开: {msg}");
             let _ = app.emit("ws-error", msg.clone());
+            // E/A 帧（非正常断开后的服务端冷却/接管）实测会在一段时间后恢复：
+            // 用更长退避重试而非永久放弃；连续失败则回退到 60s 节奏
             if msg.contains("接管") || msg.contains("永久错误") {
-                // 设备被接管 / 服务端要求重新登录：不再自动重连，等用户操作
-                let mut back = backoff.min(60);
-                let _ = &mut back;
-                tokio::time::sleep(Duration::from_secs(3600)).await;
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                continue;
             }
         }
         tokio::time::sleep(Duration::from_secs(backoff)).await;
@@ -268,7 +269,7 @@ async fn run_connection(app: &tauri::AppHandle, sess: &Session) -> Result<()> {
                         if let Some(t) = payload {
                             match t.as_str() {
                                 "#" => {}
-                                "!" => { let _ = fetch_and_store(app.clone()).await; }
+                                "!" => { eprintln!("[ws] 收到 ! 信号"); let _ = fetch_and_store(app.clone()).await; }
                                 "R" => break Err(anyhow!("服务端要求重连(R)")),
                                 "E" => break Err(anyhow!("永久错误(E)，需要重新登录")),
                                 "A" => break Err(anyhow!("设备被另一会话接管(A)，请更换设备名")),
