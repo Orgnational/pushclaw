@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS messages (
     date        INTEGER,
     received_at INTEGER,
     acked       INTEGER DEFAULT 0,
-    receipt     TEXT
+    receipt     TEXT,
+    archived    INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date);
 "#;
@@ -48,6 +49,7 @@ pub struct Msg {
     pub date: i64,
     pub acked: bool,
     pub receipt: String,
+    pub archived: bool,
 }
 
 pub fn data_dir() -> PathBuf {
@@ -66,6 +68,19 @@ pub fn open(path: &PathBuf) -> rusqlite::Result<Connection> {
     }
     let conn = Connection::open(path)?;
     conn.execute_batch(SCHEMA)?;
+    // 老库迁移：补 archived 列
+    let has_archived: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='archived'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_archived == 0 {
+        conn.execute_batch(
+            "ALTER TABLE messages ADD COLUMN archived INTEGER DEFAULT 0",
+        )?;
+    }
     Ok(conn)
 }
 
@@ -157,54 +172,91 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
                 date: vint(m, "date"),
                 acked: vbool1(m, "acked"),
                 receipt: vstr(m, "receipt"),
+                archived: false,
             });
         }
     }
     new_msgs
 }
 
-pub fn query(conn: &Connection, search: Option<&str>, limit: i64) -> Vec<Msg> {
-    let sql = match search {
-        Some(_) => {
-            "SELECT id, umid, title, message, html, priority, url, url_title,
-                    app, date, acked, receipt
-             FROM messages
-             WHERE title LIKE ?1 OR message LIKE ?1 OR app LIKE ?1
-             ORDER BY date DESC, id DESC LIMIT ?2"
-        }
-        None => {
-            "SELECT id, umid, title, message, html, priority, url, url_title,
-                    app, date, acked, receipt
-             FROM messages
-             ORDER BY date DESC, id DESC LIMIT ?2"
-        }
-    };
-    let like = format!("%{}%", search.unwrap_or(""));
+const MSG_COLS: &str = "id, umid, title, message, html, priority, url, url_title, app, date, acked, receipt, archived";
+
+fn row_to_msg(r: &rusqlite::Row) -> rusqlite::Result<Msg> {
+    Ok(Msg {
+        id: r.get(0)?,
+        umid: r.get(1)?,
+        title: r.get(2)?,
+        message: r.get(3)?,
+        html: r.get::<_, i64>(4)? == 1,
+        priority: r.get(5)?,
+        url: r.get(6)?,
+        url_title: r.get(7)?,
+        app: r.get(8)?,
+        date: r.get(9)?,
+        acked: r.get::<_, i64>(10)? == 1,
+        receipt: r.get(11)?,
+        archived: r.get::<_, i64>(12)? == 1,
+    })
+}
+
+/// 历史查询：归档过滤 + 可选优先级/关键词过滤。
+pub fn query(
+    conn: &Connection,
+    search: Option<&str>,
+    limit: i64,
+    priority: Option<i64>,
+    archived: bool,
+) -> Vec<Msg> {
+    let like = search.map(|q| format!("%{q}%"));
+    let sql = "SELECT id, umid, title, message, html, priority, url, url_title,
+                      app, date, acked, receipt, archived
+               FROM messages
+               WHERE archived = ?1
+                 AND (?2 IS NULL OR priority = ?2)
+                 AND (?3 IS NULL OR title LIKE ?3 OR message LIKE ?3 OR app LIKE ?3)
+               ORDER BY date DESC, id DESC LIMIT ?4";
     let mut stmt = match conn.prepare(sql) {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
     let rows = stmt.query_map(
-        rusqlite::params![like, limit],
-        |r| {
-            Ok(Msg {
-                id: r.get(0)?,
-                umid: r.get(1)?,
-                title: r.get(2)?,
-                message: r.get(3)?,
-                html: r.get::<_, i64>(4)? == 1,
-                priority: r.get(5)?,
-                url: r.get(6)?,
-                url_title: r.get(7)?,
-                app: r.get(8)?,
-                date: r.get(9)?,
-                acked: r.get::<_, i64>(10)? == 1,
-                receipt: r.get(11)?,
-            })
-        },
+        rusqlite::params![archived as i64, priority, like, limit],
+        |r| row_to_msg(r),
     );
     match rows {
         Ok(it) => it.filter_map(|r| r.ok()).collect(),
         Err(_) => Vec::new(),
     }
+}
+
+pub fn get(conn: &Connection, id: i64) -> Option<Msg> {
+    conn.query_row(
+        &format!("SELECT {MSG_COLS} FROM messages WHERE id = ?1"),
+        rusqlite::params![id],
+        |r| row_to_msg(r),
+    )
+    .ok()
+}
+
+/// 批量归档/恢复，返回影响行数。
+pub fn set_archived(conn: &Connection, ids: &[i64], archived: bool) -> usize {
+    ids.iter()
+        .map(|id| {
+            conn.execute(
+                "UPDATE messages SET archived=?1 WHERE id=?2",
+                rusqlite::params![archived as i64, id],
+            )
+            .unwrap_or(0)
+        })
+        .sum()
+}
+
+/// 批量删除，返回影响行数。
+pub fn delete_ids(conn: &Connection, ids: &[i64]) -> usize {
+    ids.iter()
+        .map(|id| {
+            conn.execute("DELETE FROM messages WHERE id=?1", rusqlite::params![id])
+                .unwrap_or(0)
+        })
+        .sum()
 }

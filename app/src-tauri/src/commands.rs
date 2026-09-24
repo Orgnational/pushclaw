@@ -65,9 +65,42 @@ pub fn history(
     state: tauri::State<'_, AppState>,
     query: Option<String>,
     limit: Option<i64>,
+    priority: Option<i64>,
+    archived: Option<bool>,
 ) -> Vec<Msg> {
     let db = state.db.lock().unwrap();
-    store::query(&db, query.as_deref(), limit.unwrap_or(200))
+    store::query(
+        &db,
+        query.as_deref(),
+        limit.unwrap_or(200),
+        priority,
+        archived.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
+pub fn get_message(state: tauri::State<'_, AppState>, id: i64) -> Option<Msg> {
+    let db = state.db.lock().unwrap();
+    store::get(&db, id)
+}
+
+#[tauri::command]
+pub fn delete_messages(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Result<usize, String> {
+    let db = state.db.lock().unwrap();
+    Ok(store::delete_ids(&db, &ids))
+}
+
+#[tauri::command]
+pub fn archive_messages(
+    state: tauri::State<'_, AppState>,
+    ids: Vec<i64>,
+    archived: bool,
+) -> Result<usize, String> {
+    let db = state.db.lock().unwrap();
+    Ok(store::set_archived(&db, &ids, archived))
 }
 
 #[tauri::command]

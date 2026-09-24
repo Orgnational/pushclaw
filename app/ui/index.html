@@ -35,13 +35,59 @@
         <span id="conn-dot" class="dot off" title="连接状态"></span>
         <span id="device-label" class="muted"></span>
       </div>
-      <input id="search" type="search" placeholder="搜索历史消息…" />
+      <nav class="tabs">
+        <button class="tab active" data-view="inbox">消息</button>
+        <button class="tab" data-view="archive">归档</button>
+      </nav>
+      <div class="header-actions">
+        <button id="select-btn" class="ghost">选择</button>
+        <button id="sync-btn" class="ghost">同步</button>
+      </div>
     </header>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="搜索标题 / 正文 / 应用…" />
+      <div class="chips" id="priority-chips">
+        <button class="chip active" data-p="">全部</button>
+        <button class="chip" data-p="2">! 紧急</button>
+        <button class="chip" data-p="1">↑ 高优</button>
+      </div>
+    </div>
+
+    <div id="batch-bar" class="hidden">
+      <span id="sel-count">已选 0 条</span>
+      <div class="batch-actions">
+        <button id="sel-all" class="ghost">全选</button>
+        <button id="sel-archive" class="ghost">归档</button>
+        <button id="sel-delete" class="danger">删除</button>
+        <button id="sel-cancel" class="ghost">取消</button>
+      </div>
+    </div>
+
     <main id="list"></main>
     <footer>
       <span id="count-label"></span>
-      <button id="sync-btn" title="立即拉取">同步</button>
+      <span id="view-hint" class="muted small"></span>
     </footer>
+  </div>
+
+  <!-- 单条详情（便签式） -->
+  <div id="detail-overlay" class="hidden">
+    <div id="detail-note">
+      <div id="detail-head">
+        <span id="detail-flag" class="p"></span>
+        <span id="detail-title" class="t"></span>
+        <button id="detail-close" title="关闭">✕</button>
+      </div>
+      <div id="detail-body"></div>
+      <div id="detail-meta"></div>
+      <div id="detail-actions">
+        <a id="detail-url" class="hidden" href="#">打开链接 ↗</a>
+        <button id="detail-ack" class="hidden urgent-btn">确认（全设备静默）</button>
+        <button id="detail-archive" class="ghost"></button>
+        <button id="detail-delete" class="danger">删除</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
