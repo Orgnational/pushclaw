@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pushover-toolkit"
+version = "0.2.0"
+description = "Pushover 收发命令行工具：强提醒发送端 + Open Client 接收端（纯标准库，非官方）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "orgnational" }]
+keywords = ["pushover", "notification", "push", "cli"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Communications",
+    "Topic :: Utilities",
+]
+
+[project.scripts]
+po-send = "pushover_sender:main"
+po-receive = "pushover_receiver:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["pushover_sender", "pushover_receiver"]

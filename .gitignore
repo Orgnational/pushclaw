@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 运行产物
+*.log
+.DS_Store
+
+# 凭据（绝不入库）
+config.json
+receiver.json
