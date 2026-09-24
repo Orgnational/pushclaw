@@ -41,7 +41,7 @@ from pathlib import Path
 API_URL = "https://api.pushover.net/1/messages.json"
 VALIDATE_URL = "https://api.pushover.net/1/users/validate.json"
 RECEIPT_URL = "https://api.pushover.net/1/receipts/{receipt}.json"
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 USER_AGENT = f"pushover-sender/{__version__}"
 
 MAX_MESSAGE_LEN = 1024        # 正文上限（字符数）

@@ -217,7 +217,8 @@ def main() -> int:
     env = {"PUSHOVER_API_BASE": f"http://127.0.0.1:{api_port}/1",
            "PUSHOVER_WS_HOST": "127.0.0.1",
            "PUSHOVER_WS_PORT": str(ws_port),
-           "PUSHOVER_WS_TLS": "0"}
+           "PUSHOVER_WS_TLS": "0",
+           "PUSHOVER_HTTP_PORT": "18899"}
 
     # 预置账号
     STATE["users"]["tester@example.com"] = {
@@ -300,11 +301,19 @@ def main() -> int:
         if "新入库 1 条" in line:
             break
     expect("新入库 1 条" in got, "run 实时收到 ! 帧并入库", got[-400:])
-    popen.send_signal(signal.SIGTERM)
+
+    # 6.5 本地历史网页应包含实时入库的消息（须在进程存活期间访问）
+    import urllib.request
     try:
-        popen.wait(5)
-    except subprocess.TimeoutExpired:
-        popen.kill()
+        page = urllib.request.urlopen("http://127.0.0.1:18899/", timeout=5).read().decode()
+        expect("常驻模式实时消息" in page and "msg-103" in page,
+               "本地历史网页渲染实时消息", page[:300])
+    finally:
+        popen.send_signal(signal.SIGTERM)
+        try:
+            popen.wait(5)
+        except subprocess.TimeoutExpired:
+            popen.kill()
 
     # 7. prune 清服务端队列
     r = run_cli(tmp, env, "prune")

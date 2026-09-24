@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pushover-toolkit"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pushover 收发命令行工具：强提醒发送端 + Open Client 接收端（纯标准库，非官方）"
 readme = "README.md"
 requires-python = ">=3.10"

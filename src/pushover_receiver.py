@@ -27,6 +27,9 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import html as _html
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
 import json
 import os
@@ -55,7 +58,7 @@ WS_PORT = int(os.environ.get("PUSHOVER_WS_PORT", "443"))
 WS_TLS = os.environ.get("PUSHOVER_WS_TLS", "1" if WS_PORT == 443 else "0") == "1"
 WS_PATH = "/push"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 UA = f"pushover-receiver/{__version__} (unofficial; macOS/Windows)"
 
 CONFIG_DIR = Path.home() / ".config" / "pushover"
@@ -64,6 +67,7 @@ DATA_DIR = Path.home() / ".local" / "share" / "pushover"
 HISTORY_DB = DATA_DIR / "history.db"
 
 DEVICE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,25}$")
+DEFAULT_HTTP_PORT = int(os.environ.get("PUSHOVER_HTTP_PORT", "8899"))
 WS_READ_TIMEOUT = 180        # 无任何帧（含心跳）的最长等待秒数，超时判死重连
 RECONNECT_MIN, RECONNECT_MAX = 3, 60
 
@@ -232,47 +236,221 @@ def api_ack(secret: str, receipt: str) -> None:
 
 # ---------------------------------------------------------------- Toast（尽力而为）
 
-def send_toast(title: str, body: str, url: str | None = None) -> str:
-    """跨平台系统通知，返回实际使用的后端名；全部失败返回 'none'。"""
-    sysname = sys.platform
+# 通知小程序的 AppleScript 源码：带 bundle 的独立 applet，通知归属显示为
+# "Pushover Toolkit"（而不是 osascript 宿主的"脚本编辑器"）。
+# 无环境变量启动（= 用户点击了通知）时打开点击目标（消息链接或本地历史网页）。
+APPLET_SCRIPT = (
+    'on _openTarget()\n'
+    '\ttry\n'
+    '\t\tset fPath to (system attribute "HOME") & '
+    '"/.local/share/pushover/last_click_target"\n'
+    '\t\tset t to read (POSIX file fPath) as «class utf8»\n'
+    '\t\tif t is not "" then open location t\n'
+    '\tend try\n'
+    'end _openTarget\n'
+    '\n'
+    'on run\n'
+    '\tif (system attribute "PO_TITLE") is "" then\n'
+    '\t\t_openTarget()\n'
+    '\telse\n'
+    '\t\tdisplay notification (system attribute "PO_BODY") with title '
+    '(system attribute "PO_TITLE")\n'
+    '\tend if\n'
+    'end run\n'
+    '\n'
+    'on reopen\n'
+    '\t_openTarget()\n'
+    'end reopen\n'
+)
+
+
+def build_toast_applet() -> Path | None:
+    """构建（或复用）通知 applet，返回其可执行文件路径；不可用返回 None。"""
+    app = DATA_DIR / "PushoverToolkit.app"
+    exe_dir = app / "Contents" / "MacOS"
+    marker = DATA_DIR / ".toast_applet_version"
+    exe = next(iter(exe_dir.glob("*")), None) if exe_dir.is_dir() else None
+    if exe and marker.is_file() and marker.read_text() == __version__:
+        return exe
+    if shutil_which("osacompile") is None:
+        return None
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".applescript",
+                                     delete=False, encoding="utf-8") as tf:
+        tf.write(APPLET_SCRIPT)
+        src = tf.name
     try:
-        if sysname == "darwin":
-            if shutil_which("terminal-notifier"):
-                args = ["terminal-notifier", "-title", title, "-message", body,
-                        "-group", "pushover-receiver"]
-                if url:
-                    args += ["-open", url]
-                if subprocess.run(args, timeout=15).returncode == 0:
-                    return "terminal-notifier"
-            script = (f'display notification {json.dumps(body, ensure_ascii=False)} '
-                      f'with title {json.dumps(title, ensure_ascii=False)}')
-            r = subprocess.run(["osascript", "-e", script], timeout=15,
-                               capture_output=True, text=True)
-            if r.returncode == 0:
-                return "osascript"
-            print(f"[toast] osascript 失败: {r.stderr.strip()[:120]}",
+        r = subprocess.run(["osacompile", "-o", str(app), src],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            print(f"[toast] osacompile 失败: {r.stderr.strip()[:200]}",
                   file=sys.stderr)
-            return "none"
-        if sysname == "win32":
+            return None
+    finally:
+        os.unlink(src)
+    # 应用名与后台属性（不进 Dock、无窗口）
+    pb, plist = "/usr/libexec/PlistBuddy", app / "Contents" / "Info.plist"
+    subprocess.run([pb, "Set", ":CFBundleName", "Pushover Toolkit", str(plist)],
+                   capture_output=True)
+    subprocess.run([pb, "Add", ":LSUIElement", "bool", "true", str(plist)],
+                   capture_output=True)   # 已存在时会失败，忽略
+    marker.write_text(__version__)
+    return next(iter(exe_dir.glob("*")), None)
+
+
+def send_toast(title: str, body: str, url: str | None = None,
+               click_target: str | None = None) -> str:
+    """跨平台系统通知，返回实际使用的后端名；全部失败返回 'none'。
+
+    click_target：用户点击通知后打开的地址（缺省用 url）。
+    """
+    sysname = sys.platform
+    if click_target is None:
+        click_target = url
+    if sysname == "darwin":
+        if click_target:
             try:
-                from windows_toasts import Toast, ToastDisplay  # type: ignore
-                t = Toast()
-                t.text_fields = [title, body]
-                t.display = ToastDisplay.DURATION_SHORT
-                t.show()
-                return "windows-toasts"
-            except ImportError:
-                ps = (f"[Windows.UI.Notifications.ToastNotificationManager, "
-                      f"Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; "
-                      f"$t=[Windows.UI.Notifications.ToastNotificationManager]"
-                      f"::CreateToastNotifier('Pushover Receiver')")
-                subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                               check=False, timeout=15,
-                               capture_output=True)
-                return "powershell"
-    except Exception:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                (DATA_DIR / "last_click_target").write_text(click_target)
+            except OSError:
+                pass
+        # 首选：自建 applet（归属 "Pushover Toolkit"，点击可打开目标）
+        applet = build_toast_applet()
+        if applet:
+            env = dict(os.environ, PO_TITLE=title, PO_BODY=body)
+            try:
+                r = subprocess.run([str(applet)], env=env, capture_output=True,
+                                   timeout=15)
+                if r.returncode == 0:
+                    return "applet"
+                print(f"[toast] applet 退出码 {r.returncode}，降级",
+                      file=sys.stderr)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                print(f"[toast] applet 调用失败: {e}，降级", file=sys.stderr)
+        # 次选：terminal-notifier（brew 安装，可点击/分组）
+        if shutil_which("terminal-notifier"):
+            args = ["terminal-notifier", "-title", title, "-message", body,
+                    "-group", "pushover-receiver"]
+            if click_target:
+                args += ["-open", click_target]
+            if subprocess.run(args, timeout=15).returncode == 0:
+                return "terminal-notifier"
+        # 兜底：osascript（归属"脚本编辑器"，点击无动作）
+        script = (f'display notification {json.dumps(body, ensure_ascii=False)} '
+                  f'with title {json.dumps(title, ensure_ascii=False)}')
+        r = subprocess.run(["osascript", "-e", script], timeout=15,
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return "osascript"
+        print(f"[toast] osascript 失败: {r.stderr.strip()[:120]}",
+              file=sys.stderr)
         return "none"
+    if sysname == "win32":
+        try:
+            from windows_toasts import Toast, ToastDisplay  # type: ignore
+            t = Toast()
+            t.text_fields = [title, body]
+            if click_target:
+                t.on_activated = lambda *a, **k: _open_target(click_target)
+            t.display = ToastDisplay.DURATION_SHORT
+            t.show()
+            return "windows-toasts"
+        except ImportError:
+            ps = (f"[Windows.UI.Notifications.ToastNotificationManager, "
+                  f"Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; "
+                  f"$t=[Windows.UI.Notifications.ToastNotificationManager]"
+                  f"::CreateToastNotifier('Pushover Receiver')")
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           check=False, timeout=15, capture_output=True)
+            return "powershell"
     return "none"
+
+
+def _open_target(target: str) -> None:
+    try:
+        import webbrowser
+        webbrowser.open(target)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------- 本地历史网页
+
+_PAGE_TMPL = """<!doctype html><meta charset="utf-8">
+<title>Pushover 历史消息</title>
+<style>
+body{{font-family:-apple-system,system-ui,"Segoe UI",sans-serif;max-width:720px;
+     margin:24px auto;padding:0 16px;background:#141414;color:#e8e8e8}}
+a{{color:#7ab8ff}}
+.m{{border:1px solid #333;border-radius:10px;padding:12px 16px;margin:10px 0}}
+.m:target{{border-color:#e05555;background:#221316}}
+.t{{font-weight:600}}
+.p{{color:#e05555;font-weight:700;margin-right:6px}}
+time{{color:#888;font-size:12px;float:right}}
+pre{{white-space:pre-wrap;font-family:inherit;margin:6px 0 0}}
+h2 small{{color:#888;font-size:13px;font-weight:400}}
+</style>
+<h2>Pushover 消息历史 <small>最近 {n} 条 / 共 {total} 条 · {addr}</small></h2>
+{items}
+"""
+
+
+def start_history_server(port: int) -> bool:
+    """在 127.0.0.1:port 起本地历史网页（后台线程），成功返回 True。"""
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):   # 静默访问日志
+            pass
+
+        def do_GET(self):
+            try:
+                conn = open_db()
+                total = conn.execute(
+                    "SELECT COUNT(*) c FROM messages").fetchone()["c"]
+                rows = conn.execute(
+                    "SELECT * FROM messages ORDER BY date DESC, id DESC LIMIT 200"
+                ).fetchall()
+                items = []
+                for r in rows:
+                    body = r["message"] or ""
+                    body_html = body if r["html"] else _html.escape(body)
+                    if "\n" in body_html and not r["html"]:
+                        body_html = body_html.replace("\n", "<br>")
+                    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(
+                        r["date"] or r["received_at"]))
+                    flag = ("!" if r["priority"] == 2 else
+                            "↑" if r["priority"] == 1 else "")
+                    title = _html.escape(r["title"] or r["app"] or "-")
+                    if r["url"]:
+                        title = (f'<a href="{_html.escape(r["url"], quote=True)}">'
+                                 f"{title}</a>")
+                    items.append(
+                        f'<div class="m" id="msg-{r["id"]}">'
+                        f'<time>{ts}</time><span class="p">{flag}</span>'
+                        f'<span class="t">{title}</span>'
+                        f"<pre>{body_html}</pre></div>")
+                page = _PAGE_TMPL.format(
+                    n=len(rows), total=total, addr=f"127.0.0.1:{port}",
+                    items="\n".join(items))
+                raw = page.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(e).encode("utf-8"))
+
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError as e:
+        print(f"[web] 历史网页端口 {port} 不可用: {e}", file=sys.stderr)
+        return False
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return True
 
 
 def shutil_which(name: str) -> str | None:
@@ -506,8 +684,11 @@ class WSClient:
 
 # ---------------------------------------------------------------- 常驻运行
 
-def run_daemon(cfg: dict, auto_clean: bool, toast: bool) -> None:
+def run_daemon(cfg: dict, auto_clean: bool, toast: bool,
+               http_port: int = DEFAULT_HTTP_PORT) -> None:
     conn = open_db()
+    if start_history_server(http_port):
+        log(f"本地历史网页: http://127.0.0.1:{http_port}")
     backoff = RECONNECT_MIN
     while True:
         try:
@@ -538,10 +719,13 @@ def run_daemon(cfg: dict, auto_clean: bool, toast: bool) -> None:
                         if toast and new_msgs:
                             for m in new_msgs[-3:]:   # 只弹新消息，最多 3 条防刷屏
                                 title = m.get("title") or m.get("app") or "Pushover"
+                                target = m.get("url") or \
+                                    f"http://127.0.0.1:{http_port}/#msg-{m.get('id')}"
                                 backend = send_toast(title, m.get("message", ""),
-                                                     m.get("url"))
+                                                     m.get("url"),
+                                                     click_target=target)
                                 if backend == "none":
-                                    log("toast 后端不可用（可装 terminal-notifier）")
+                                    log("toast 后端不可用")
                     else:
                         log("收到信号但队列为空")
                     continue
@@ -631,6 +815,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--auto-clean", action="store_true",
                     help="入库后删除服务端队列副本（默认保留）")
     sp.add_argument("--no-toast", action="store_true", help="禁用系统通知")
+    sp.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT,
+                    help=f"本地历史网页端口（默认 {DEFAULT_HTTP_PORT}，仅 127.0.0.1）")
 
     sub.add_parser("sync", help="手动拉取一次（不用 websocket）")
 
@@ -801,7 +987,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"队列 {len(msgs)} 条，新入库 {added} 条")
         elif args.cmd == "run":
             cfg = load_config(require=("secret", "device_id"))
-            run_daemon(cfg, auto_clean=args.auto_clean, toast=not args.no_toast)
+            run_daemon(cfg, auto_clean=args.auto_clean, toast=not args.no_toast,
+                       http_port=args.http_port)
         elif args.cmd == "history":
             return cmd_history(args)
         elif args.cmd == "ack":

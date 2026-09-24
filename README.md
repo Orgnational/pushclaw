@@ -56,7 +56,7 @@ po-send "报告" -i assets/test_chart.png --html   # 图片 + 富文本
 po-receive login you@example.com '密码'      # 开两步验证时按提示加 --twofa
 po-receive register --name mac-air-desktop   # 每台机器用不同设备名
 po-receive run                               # 常驻：实时收 → 入库 → toast
-po-receive history --search 关键词            # 查历史
+po-receive history --search 关键词            # 查历史（浏览器开 http://127.0.0.1:8899 看网页版全文）
 ```
 
 发送端 `-d <设备名>` 与接收端设备名对应，实现定向推送；任意设备确认（ack）后全设备静默是服务器原生行为。

@@ -58,7 +58,8 @@ po-receive run
 - **设备互踢**：同一设备名两个会话同时在线，后连者接管（ws `A` 帧），接收端会报错退出——两台机器务必用不同 `--name` 注册
 - **重连**：断线后指数退避（3s 起，上限 60s）；`E` 帧为永久错误（需重新 login）
 - **紧急消息**：priority=2 的重试由服务端驱动，与本接收端是否在线无关；`ack` 后全设备静默。发送端的 `receipt` 子命令可查确认状态
-- **Toast 分级**：macOS 装 `brew install terminal-notifier` 后自动升级为可点击/可分组的通知；未装则用 osascript（展示正常，无点击动作）。Windows 侧 `pip install windows-toasts` 后走 WinRT，否则降级 PowerShell
+- **Toast 归属与点击**（v0.3.0）：通知由自建的 `PushoverToolkit.app` 小程序发出（归属显示 "Pushover Toolkit"，不再出现"脚本编辑器"），**点击通知**会打开消息自带链接，无链接则打开本地历史网页对应条目。小程序由接收端自动构建（osacompile，位于 `~/.local/share/pushover/`）；**首次通知若没弹出，去 系统设置→通知→Pushover Toolkit 允许一次**。降级链：applet → terminal-notifier → osascript。Windows 侧 `pip install windows-toasts` 后走 WinRT
+- **本地历史网页**：`run` 时自动在 `http://127.0.0.1:8899`（仅本机可访问）提供深色主题的历史页面，全文渲染（html 消息按原始 HTML 渲染）、紧急/高优标记、消息链接可点、点击 toast 定位到对应条目（`#msg-<id>` 高亮）。端口可用 `--http-port` 或 `PUSHOVER_HTTP_PORT` 改
 - **合规**：Open Client API 要求界面注明非官方、不用 Pushover 品牌、请求带 UA、运行在用户自己设备上
 
 ## 回归测试
@@ -73,6 +74,6 @@ python3 -u test_receiver_e2e.py            # 模拟服务端全链路 15 项断�
 ## Phase 2 待办
 
 - [ ] 托盘图标（mac rumps / win pystray）：退出开关、未读计数
-- [ ] Toast 点击动作：普通消息点击→打开 `url`；紧急消息按钮"确认"→ack
-- [ ] 历史网页视图（localhost 单页）：按天分组、搜索框
+- [x] Toast 点击动作：打开消息 url / 本地历史网页锚点；紧急消息"确认"按钮待做
+- [x] 历史网页视图（localhost 单页，深色主题，:target 定位高亮）；搜索框待加
 - [ ] 开机自启（mac LaunchAgent / win 计划任务）
