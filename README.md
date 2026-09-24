@@ -1,6 +1,6 @@
 # PushClaw
 
-> 应用名 PushClaw（遵循 Pushover Open Client 命名规范：第三方客户端名称不得含 "Pushover"）；本仓库/项目目录名保留 pushover-toolkit。
+> 应用名与 GitHub 仓库均为 PushClaw/pushclaw（遵循 Pushover Open Client 命名规范：第三方客户端名称不得含 "Pushover"）；本地工作目录名保留 pushover-toolkit 不影响任何使用。
 
 Pushover 收发命令行工具箱：**强提醒发送端 + 桌面接收端**，纯 Python 标准库（零第三方依赖），macOS / Windows 通用。
 
