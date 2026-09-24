@@ -58,7 +58,7 @@ WS_PORT = int(os.environ.get("PUSHOVER_WS_PORT", "443"))
 WS_TLS = os.environ.get("PUSHOVER_WS_TLS", "1" if WS_PORT == 443 else "0") == "1"
 WS_PATH = "/push"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 UA = f"pushover-receiver/{__version__} (unofficial; macOS/Windows)"
 
 CONFIG_DIR = Path.home() / ".config" / "pushover"
@@ -255,6 +255,8 @@ APPLET_SCRIPT = (
     '\telse\n'
     '\t\tdisplay notification (system attribute "PO_BODY") with title '
     '(system attribute "PO_TITLE")\n'
+    '\t\tdelay 1\n'
+    '\t\tquit\n'
     '\tend if\n'
     'end run\n'
     '\n'
@@ -320,13 +322,11 @@ def send_toast(title: str, body: str, url: str | None = None,
         if applet:
             env = dict(os.environ, PO_TITLE=title, PO_BODY=body)
             try:
-                r = subprocess.run([str(applet)], env=env, capture_output=True,
-                                   timeout=15)
-                if r.returncode == 0:
-                    return "applet"
-                print(f"[toast] applet 退出码 {r.returncode}，降级",
-                      file=sys.stderr)
-            except (OSError, subprocess.TimeoutExpired) as e:
+                subprocess.Popen([str(applet)], env=env, start_new_session=True,
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                return "applet"
+            except OSError as e:
                 print(f"[toast] applet 调用失败: {e}，降级", file=sys.stderr)
         # 次选：terminal-notifier（brew 安装，可点击/分组）
         if shutil_which("terminal-notifier"):
