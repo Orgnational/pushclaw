@@ -68,8 +68,11 @@ fn main() {
                 .separator()
                 .item(&quit)
                 .build()?;
+            // 托盘专用图标：白色爪痕透明底；macOS 模板模式自适应深浅色菜单栏
+            let tray_icon = tauri::include_image!("icons/tray.png");
             TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
+                .icon_as_template(true)
                 .tooltip("Pushover Toolkit")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
