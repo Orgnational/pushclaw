@@ -1,9 +1,12 @@
-name: build-desktop
+name: build-release
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -12,28 +15,56 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            args: --bundles app,dmg
+            target: macos
           - os: windows-latest
-            args: --bundles msi
+            target: windows
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Install frontend deps
         working-directory: app
         run: npm install
-      - name: Build Tauri app
+
+      - name: Build (macOS)
+        if: matrix.target == 'macos'
         working-directory: app
-        run: npx tauri build ${{ matrix.args }}
-      - name: Upload artifacts
+        run: npx tauri build --bundles app
+
+      - name: Package macOS .app into zip
+        if: matrix.target == 'macos'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ditto -c -k --keepParent \
+            "app/src-tauri/target/release/bundle/macos/PushClaw.app" \
+            "PushClaw-${VERSION}-macos-arm64.zip"
+
+      - name: Build (Windows)
+        if: matrix.target == 'windows'
+        working-directory: app
+        shell: pwsh
+        run: npx tauri build --bundles msi
+
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pushover-toolkit-${{ matrix.os }}
+          name: pushclaw-${{ matrix.target }}
           path: |
-            app/src-tauri/target/release/bundle/macos/*.app
-            app/src-tauri/target/release/bundle/dmg/*.dmg
+            PushClaw-*-macos-arm64.zip
             app/src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
+
+      - name: Create/attach GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            PushClaw-*-macos-arm64.zip
+            app/src-tauri/target/release/bundle/msi/*.msi
