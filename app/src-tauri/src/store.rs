@@ -35,8 +35,15 @@ pub struct Session {
     pub device_name: String,
 }
 
+/// i64 序列化为 JSON 字符串：消息 id 超出 JS Number 安全范围（2^53），
+/// 直接序列化数字会被 JS 静默舍入导致按 id 操作全部失配。
+fn id_as_string<S: serde::Serializer>(v: &i64, ser: S) -> Result<S::Ok, S::Error> {
+    ser.serialize_str(&v.to_string())
+}
+
 #[derive(Clone, Serialize)]
 pub struct Msg {
+    #[serde(serialize_with = "id_as_string")]
     pub id: i64,
     pub umid: String,
     pub title: String,

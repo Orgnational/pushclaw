@@ -2854,7 +2854,7 @@ dependencies = [
 
 [[package]]
 name = "pushover-toolkit-app"
-version = "0.5.0"
+version = "0.5.2"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",

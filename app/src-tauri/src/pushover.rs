@@ -174,10 +174,29 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
     Ok(n)
 }
 
+/// 同名重新注册设备并更新会话：E 帧冷却期的自愈手段（实测立即恢复）。
+pub async fn re_register(app: &tauri::AppHandle) -> Result<()> {
+    let st = app.state::<AppState>();
+    let sess = {
+        let guard = st.session.lock().unwrap();
+        guard.clone()
+    };
+    let Some(sess) = sess else { return Ok(()) };
+    let device_id = register(&sess.secret, &sess.device_name).await?;
+    let new_sess = Session { device_id, ..sess };
+    store::save_session(&new_sess)?;
+    *st.session.lock().unwrap() = Some(new_sess);
+    let _ = st.session_tx.send(*st.session_tx.borrow() + 1);
+    eprintln!("[ws] 已同名重新注册设备，使用新 device_id 重连");
+    Ok(())
+}
+
 /// 常驻循环：登录后维持 ws 连接；断线重连（指数退避）；重新登录即换会话重连。
 pub async fn ws_loop(app: tauri::AppHandle) {
     let mut backoff: u64 = 3;
+    let mut e_streak: u32 = 0;
     loop {
+        let attempt_start = std::time::Instant::now();
         let sess = {
             let st = app.state::<AppState>();
             let guard = st.session.lock().unwrap();
@@ -199,12 +218,23 @@ pub async fn ws_loop(app: tauri::AppHandle) {
             let msg = e.to_string();
             eprintln!("[ws] 断开: {msg}");
             let _ = app.emit("ws-error", msg.clone());
-            // E/A 帧（非正常断开后的服务端冷却/接管）实测会在一段时间后恢复：
-            // 用更长退避重试而非永久放弃；连续失败则回退到 60s 节奏
+            // E/A 帧：非正常断开后的服务端冷却/接管，通常等一会儿就恢复。
+            // E 连续 3 次仍被拒 → 同名重新注册自愈（避免积压通知长时间无法接收）
             if msg.contains("接管") || msg.contains("永久错误") {
+                if msg.contains("永久错误") {
+                    e_streak += 1;
+                    if e_streak >= 3 {
+                        let _ = re_register(&app).await;
+                        e_streak = 0;
+                        continue;
+                    }
+                }
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 continue;
             }
+        }
+        if attempt_start.elapsed() > Duration::from_secs(120) {
+            e_streak = 0;   // 稳定连过一段时间，重置 E 计数
         }
         tokio::time::sleep(Duration::from_secs(backoff)).await;
         backoff = (backoff * 2).min(60);

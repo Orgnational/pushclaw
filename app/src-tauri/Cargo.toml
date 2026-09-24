@@ -1,6 +1,6 @@
 [package]
 name = "pushover-toolkit-app"
-version = "0.5.0"
+version = "0.5.2"
 description = "Pushover Toolkit 桌面接收端"
 edition = "2021"
 rust-version = "1.77"

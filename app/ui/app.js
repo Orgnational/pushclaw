@@ -175,7 +175,7 @@ $("select-btn").addEventListener("click", () => setSelecting(!state.selecting));
 $("sel-cancel").addEventListener("click", () => setSelecting(false));
 $("sel-all").addEventListener("click", () => {
   document.querySelectorAll("#list .m").forEach((el) =>
-    state.selected.add(Number(el.dataset.id)));
+    state.selected.add(el.dataset.id));   // 字符串 id：大整数不能用 Number
   refreshBatchBar(); loadHistory();
 });
 
@@ -213,7 +213,7 @@ $("sel-delete").addEventListener("click", async () => {
 $("list").addEventListener("click", async (e) => {
   const card = e.target.closest(".m");
   if (!card) return;
-  const id = Number(card.dataset.id);
+  const id = card.dataset.id;   // 字符串 id
   if (state.selecting) {
     if (state.selected.has(id)) state.selected.delete(id);
     else state.selected.add(id);
@@ -245,7 +245,7 @@ $("detail-url").addEventListener("click", async (e) => {
 });
 $("detail-ack").addEventListener("click", async (e) => {
   const note = $("detail-note");
-  const m = await invoke("get_message", { id: Number(note.dataset.id) });
+  const m = await invoke("get_message", { id: note.dataset.id });
   if (!m?.receipt) return;
   e.target.disabled = true; e.target.textContent = "确认中…";
   try {
@@ -259,7 +259,7 @@ $("detail-ack").addEventListener("click", async (e) => {
 $("detail-archive").addEventListener("click", async () => {
   const note = $("detail-note");
   await invoke("archive_messages", {
-    ids: [Number(note.dataset.id)],
+    ids: [note.dataset.id],
     archived: note.dataset.archived !== "1",
   });
   closeDetail();
@@ -277,7 +277,7 @@ $("detail-delete").addEventListener("click", async () => {
   }
   delete $("detail-delete").dataset.armed;
   $("detail-delete").textContent = "删除";
-  await invoke("delete_messages", { ids: [Number($("detail-note").dataset.id)] });
+  await invoke("delete_messages", { ids: [$("detail-note").dataset.id] });
   closeDetail();
   await loadHistory();
 });

@@ -79,7 +79,8 @@ pub fn history(
 }
 
 #[tauri::command]
-pub fn get_message(state: tauri::State<'_, AppState>, id: i64) -> Option<Msg> {
+pub fn get_message(state: tauri::State<'_, AppState>, id: String) -> Option<Msg> {
+    let id = id.parse::<i64>().ok()?;
     let db = state.db.lock().unwrap();
     store::get(&db, id)
 }
@@ -87,8 +88,12 @@ pub fn get_message(state: tauri::State<'_, AppState>, id: i64) -> Option<Msg> {
 #[tauri::command]
 pub fn delete_messages(
     state: tauri::State<'_, AppState>,
-    ids: Vec<i64>,
+    ids: Vec<String>,
 ) -> Result<usize, String> {
+    let ids = ids
+        .iter()
+        .map(|s| s.parse::<i64>().map_err(|e| format!("非法 id: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
     let db = state.db.lock().unwrap();
     Ok(store::delete_ids(&db, &ids))
 }
@@ -96,9 +101,13 @@ pub fn delete_messages(
 #[tauri::command]
 pub fn archive_messages(
     state: tauri::State<'_, AppState>,
-    ids: Vec<i64>,
+    ids: Vec<String>,
     archived: bool,
 ) -> Result<usize, String> {
+    let ids = ids
+        .iter()
+        .map(|s| s.parse::<i64>().map_err(|e| format!("非法 id: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
     let db = state.db.lock().unwrap();
     Ok(store::set_archived(&db, &ids, archived))
 }
