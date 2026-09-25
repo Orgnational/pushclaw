@@ -78,6 +78,8 @@ fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(UA)
         .dns_resolver(Arc::new(DoHResolver))
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
         .build()
         .expect("构建 HTTP 客户端失败")
 }
