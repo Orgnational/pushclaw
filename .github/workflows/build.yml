@@ -43,6 +43,10 @@ jobs:
         working-directory: app
         run: npx tauri build --bundles app
 
+      - name: Build CLI binary
+        working-directory: app/src-tauri
+        run: cargo build --release --bin pushclaw
+
       - name: Package macOS .app into zip
         if: matrix.target == 'macos'
         run: |
@@ -59,6 +63,7 @@ jobs:
         shell: pwsh
         run: |
           npx tauri build --bundles msi
+          cargo build --release --bin pushclaw
           $v = $env:GITHUB_REF_NAME -replace '^v',''
           Copy-Item app/src-tauri/target/release/pushclaw.exe "pushclaw-$v-windows-x64.exe"
 

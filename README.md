@@ -3,9 +3,9 @@
 > 基于 [Pushover Open Client API](https://pushover.net/api/client) 的**非官方**桌面推送客户端 + CLI 收发工具箱。
 > 应用名遵循官方命名规范（第三方客户端不得使用 "Pushover"）；本项目与 Pushover 官方无关，也未获其支持。
 
-![release](https://img.shields.io/badge/release-v0.7.2-blue) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey) ![desktop deps](https://img.shields.io/badge/desktop%20deps-rust%20%2B%20系统WebView-success) ![cli deps](https://img.shields.io/badge/cli%20deps-零第三方-orange)
+![release](https://img.shields.io/badge/release-v0.8.0-blue) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey) ![desktop deps](https://img.shields.io/badge/desktop%20deps-rust%20%2B%20系统WebView-success) ![cli](https://img.shields.io/badge/CLI-Rust%20%28clap%29-informational)
 
-PushClaw 把 Pushover 变成一条**完全属于自己的通知通道**：桌面端常驻托盘实时收信，原生系统通知归属应用本体，历史消息落本地 SQLite 可搜索、可归档；CLI 发送端一条命令搞定富文本、图片附件和强提醒。
+PushClaw 把 Pushover 变成一条**完全属于自己的通知通道**：桌面端常驻托盘实时收信，原生系统通知归属应用本体，历史消息落本地 SQLite 可搜索、可归档；Rust CLI 与桌面端共用协议层，一条命令搞定富文本、图片附件和强提醒。
 
 ## ✨ 桌面端（PushClaw.app）
 
@@ -17,14 +17,15 @@ PushClaw 把 Pushover 变成一条**完全属于自己的通知通道**：桌面
 - **托盘常驻**：左键显示/隐藏，关窗不退出；E 帧（异常冷却）自动同名重注册自愈
 - **官方合规**：非官方声明常驻页脚、`A` 帧不自动重连、启动不重放旧通知、拉取后清理服务端队列
 
-## ⌨️ CLI（零第三方依赖，纯 Python 标准库）
+## ⌨️ CLI（Rust，与桌面端共用协议层）
 
 | 命令 | 说明 |
 |---|---|
-| `po-send` | 发送：富文本（5 标签 HTML）、图片附件（≤5MB）、**强提醒**（priority=2，任意设备确认全设备静默）、定向设备、TTL、23 种音效 |
-| `po-receive` | 接收端（SSH/无 GUI 场景）：实时收 + SQLite 历史 + 系统 toast |
-| `po-send validate` | 校验凭据、列出账号下设备名 |
-| `po-send receipt <id>` | 查询紧急消息确认状态（谁确认的、何时） |
+| `pushclaw send` | 发送：富文本（5 标签 HTML）、图片附件（≤5MB）、**强提醒**（priority=2，任意设备确认全设备静默）、定向设备、TTL、23 种音效 |
+| `pushclaw validate` | 校验凭据、列出账号下设备名 |
+| `pushclaw receipt <id>` | 查询紧急消息确认状态（谁确认的、何时） |
+
+> 原 Python CLI（po-send/po-receive）自 v0.8.0 起退役，由 Rust CLI 完全替代；Python 接收端的协议踩坑记录存档于 [docs/RECEIVER.md](docs/RECEIVER.md)。
 
 ## 📦 安装
 
@@ -35,19 +36,15 @@ PushClaw 把 Pushover 变成一条**完全属于自己的通知通道**：桌面
 | macOS (Apple Silicon) | `PushClaw-x.y.z-macos-arm64.zip` | 解压拖入 /Applications；未公证，首次打开需右键 → 打开 |
 | Windows | `PushClaw_x.y.z_x64_en-US.msi` | 双击安装；通知归属依赖安装器创建的快捷方式 |
 
-**CLI**：
+**CLI**（从 Release 下载对应平台二进制，如 `pushclaw-0.8.0-macos-arm64`，放进 PATH 即可）：
 
-```bash
-pip install pushover_toolkit-0.3.1-py3-none-any.whl   # 离线 wheel（dist/ 或 Release）
-# 或从源码：pip install .
-```
 
 **首次使用**：
 
 1. [pushover.net](https://pushover.net) 注册账号、[创建应用](https://pushover.net/apps/build)拿 API Token（接收端需桌面许可 $4.99，一次性）
 2. 桌面端：打开 PushClaw → 登录视图填邮箱/密码（可选两步验证）→ 设备名填**这台机器独有的名字**
-3. CLI：`cp config.example.json ~/.config/pushover/config.json` 填入 token/user → `po-send validate`
-4. 测试：`po-send "hello" -d <你的设备名>`
+3. CLI：`cp config.example.json ~/.config/pushover/config.json` 填入 token/user（凭据与桌面端互通，可省略）→ `pushclaw validate`
+4. 测试：`pushclaw send "hello" -d <你的设备名>`
 
 ## 🛠 从源码构建
 
@@ -70,12 +67,12 @@ GitHub Actions 自动完成：双平台构建 → 从 tag 同步版本号（单�
 
 ```
 pushclaw/
-├── app/                      # 桌面端（Tauri 2：Rust 后端 + 原生 JS 前端）
-│   ├── src-tauri/src/        #   pushover.rs(协议) store.rs(存储) commands.rs(命令) main.rs(壳)
+├── app/                      # Tauri 2：桌面端 + CLI 双二进制，共用 pushclaw_core 库
+│   ├── src-tauri/src/        #   pushover.rs(协议含发送) store.rs(存储) commands.rs(命令) main.rs(GUI壳) bin/pushclaw.rs(CLI)
 │   └── ui/                   #   index.html + app.js + style.css（自写设计系统）
-├── src/                      # CLI：pushover_sender.py / pushover_receiver.py（纯标准库）
 ├── docs/                     # APP.md / RECEIVER.md / SENDER.md 详解
-├── tests/                    # E2E（模拟服务端 15 项）+ 前端逻辑回归（jsdom 13 项）
+├── tests/                    # 前端逻辑回归（jsdom 13 项）
+├── src-tauri 相邻: app/src-tauri/src/bin/pushclaw.rs  # CLI 二进制入口
 ├── assets/  tools/           # 图标与生成脚本
 └── .github/workflows/        # tag → 双平台构建 → Release
 ```
