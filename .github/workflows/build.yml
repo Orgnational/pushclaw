@@ -61,11 +61,15 @@ jobs:
         if: matrix.target == 'windows'
         working-directory: app
         shell: pwsh
+        run: npx tauri build --bundles nsis
+
+      - name: Package Windows artifacts
+        if: matrix.target == 'windows'
+        shell: pwsh
         run: |
-          npx tauri build --bundles msi
-          cargo build --release --bin pushclaw
           $v = $env:GITHUB_REF_NAME -replace '^v',''
-          Copy-Item app/src-tauri/target/release/pushclaw.exe "pushclaw-$v-windows-x64.exe"
+          Copy-Item "app/src-tauri/target/release/bundle/nsis/PushClaw_${v}_x64-setup.exe" "PushClaw-${v}-windows-x64-setup.exe"
+          Copy-Item "app/src-tauri/target/release/pushclaw.exe" "pushclaw-${v}-windows-x64.exe"
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
@@ -74,8 +78,8 @@ jobs:
           path: |
             PushClaw-*-macos-arm64.zip
             pushclaw-*-macos-arm64
+            PushClaw-*-windows-x64-setup.exe
             pushclaw-*-windows-x64.exe
-            app/src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
 
       - name: Create/attach GitHub Release
