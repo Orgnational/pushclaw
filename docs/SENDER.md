@@ -36,4 +36,4 @@ pushclaw receipt <send 返回的 receipt-id>   # 紧急消息确认状态（谁/
 
 ## 与桌面端的关系
 
-同一协议层（app/src-tauri/src/pushover.rs）：CLI 负责脚本/自动化场景的发送与查询，桌面端负责交互式收发。设备名约束见 RECEIVER/APP 文档（唯一、≤10 台）。
+同一协议层（app/src-tauri/src/pushover.rs）：CLI 负责脚本/自动化场景的发送与查询，桌面端负责交互式收发。设备名约束见 [APP.md](APP.md)（唯一、≤10 台/账号）。

@@ -58,14 +58,10 @@ npx tauri icon icon_1024.png
 npx tauri build --bundles msi     # 产出 .msi 安装包
 ```
 
-无 Windows 机器时可用 CI 构建：仓库已带 `.github/workflows/build.yml`（push tag 同时产出 mac .app/.dmg 与 win .msi 的 Release 附件）。
+无 Windows 机器时可用 CI 构建：仓库已带 `.github/workflows/build.yml`（push tag 自动产出 macOS .app zip + CLI 二进制、Windows .msi 的 Release 附件）。
 
 ## 与 CLI 的关系
 
 - `pushclaw` CLI（Rust，同仓库同协议层）负责脚本/自动化发送与回执查询，用法见 [CLI.md](CLI.md)
 - 桌面端与 CLI 凭据互通：CLI 直接读取桌面端会话配置，零重复配置
-
-
-- 桌面端是 CLI 接收端的**替代品**：同一台机器上用**相同的设备名**（如 `mac-air-desktop`），登录视图里填同名即可接管；**接管前必须停掉 `po-receive run`**（同设备双会话会互踢）
-- 发送端 `po-send` 不受影响，`-d mac-air-desktop` 照常定向
-- CLI 接收端保留用于 SSH/服务器等无 GUI 场景
+- 发送定向：`pushclaw send ... -d mac-air-desktop` 照常使用（设备名唯一、≤10 台/账号）
