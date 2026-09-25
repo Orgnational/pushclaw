@@ -102,5 +102,5 @@ jobs:
           files: |
             PushClaw-*-macos-arm64.zip
             pushclaw-*-macos-arm64
+            PushClaw-*-windows-x64-setup.exe
             pushclaw-*-windows-x64.exe
-            app/src-tauri/target/release/bundle/msi/*.msi
