@@ -68,7 +68,7 @@ pushclaw/
 ├── app/                      # Tauri 2：桌面端 + CLI 双二进制，共用 pushclaw_core 库
 │   ├── src-tauri/src/        #   pushover.rs(协议含发送) store.rs(存储) commands.rs(命令) main.rs(GUI壳) bin/pushclaw.rs(CLI)
 │   └── ui/                   #   index.html + app.js + style.css（自写设计系统）
-├── docs/                     # APP.md / RECEIVER.md / SENDER.md 详解
+├── docs/                     # APP.md(桌面端) / CLI.md(命令行) 详解
 │   └── src/bin/pushclaw.rs   #   CLI 二进制入口（send/validate/receipt）
 ├── tests/                    # 前端逻辑回归（jsdom 13 项）
 ├── assets/  tools/           # 图标与生成脚本
