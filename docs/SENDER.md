@@ -1,6 +1,6 @@
 # CLI（pushclaw）
 
-`pushclaw` 是 Rust 版命令行（与桌面端共用协议层），替代原 Python po-send/po-receive。
+`pushclaw` 是 Rust 版命令行（与桌面端共用协议层），适合脚本与自动化场景。
 
 ## 子命令
 

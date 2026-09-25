@@ -25,8 +25,6 @@ PushClaw 把 Pushover 变成一条**完全属于自己的通知通道**：桌面
 | `pushclaw validate` | 校验凭据、列出账号下设备名 |
 | `pushclaw receipt <id>` | 查询紧急消息确认状态（谁确认的、何时） |
 
-> 原 Python CLI（po-send/po-receive）自 v0.8.0 起退役，由 Rust CLI 完全替代；Python 接收端的协议踩坑记录存档于 [docs/RECEIVER.md](docs/RECEIVER.md)。
-
 ## 📦 安装
 
 **桌面端**（从 [Releases](https://github.com/Orgnational/pushclaw/releases) 下载）：
@@ -71,8 +69,8 @@ pushclaw/
 │   ├── src-tauri/src/        #   pushover.rs(协议含发送) store.rs(存储) commands.rs(命令) main.rs(GUI壳) bin/pushclaw.rs(CLI)
 │   └── ui/                   #   index.html + app.js + style.css（自写设计系统）
 ├── docs/                     # APP.md / RECEIVER.md / SENDER.md 详解
+│   └── src/bin/pushclaw.rs   #   CLI 二进制入口（send/validate/receipt）
 ├── tests/                    # 前端逻辑回归（jsdom 13 项）
-├── src-tauri 相邻: app/src-tauri/src/bin/pushclaw.rs  # CLI 二进制入口
 ├── assets/  tools/           # 图标与生成脚本
 └── .github/workflows/        # tag → 双平台构建 → Release
 ```

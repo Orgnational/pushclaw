@@ -65,17 +65,6 @@ npx tauri build --bundles msi     # 产出 .msi 安装包
 - `pushclaw` CLI（Rust，同仓库同协议层）负责脚本/自动化发送与回执查询，用法见 [CLI.md](CLI.md)
 - 桌面端与 CLI 凭据互通：CLI 直接读取桌面端会话配置，零重复配置
 
-## 历史：Python 接收端（已退役）
-
-原 Python CLI 接收端（po-receive）与 CLI 发送端（po-send）自 v0.8.0 起退役，由 PushClaw 桌面端 + pushclaw CLI 完全替代；协议踩坑记录保留在 [RECEIVER.md](RECEIVER.md)。
-
-<details><summary>原"替代模式"说明（存档）</summary>
-
-- 桌面端是 CLI 接收端的**替代品**：同一台机器上用**相同的设备名**（如 `mac-air-desktop`），登录视图里填同名即可接管；**接管前必须停掉 `po-receive run`**（同设备双会话会互踢）
-- 发送端 `po-send` 不受影响，`-d mac-air-desktop` 照常定向
-- CLI 接收端保留用于 SSH/服务器等无 GUI 场景
-
-</details>
 
 - 桌面端是 CLI 接收端的**替代品**：同一台机器上用**相同的设备名**（如 `mac-air-desktop`），登录视图里填同名即可接管；**接管前必须停掉 `po-receive run`**（同设备双会话会互踢）
 - 发送端 `po-send` 不受影响，`-d mac-air-desktop` 照常定向
