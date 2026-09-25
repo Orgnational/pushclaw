@@ -111,6 +111,14 @@ async fn dial_ws() -> Result<tokio_tungstenite::WebSocketStream<
 }
 
 pub const API: &str = "https://api.pushover.net/1";
+pub const MAX_MESSAGE_LEN: usize = 1024;
+pub const MAX_TITLE_LEN: usize = 250;
+pub const MAX_URL_LEN: usize = 512;
+pub const MAX_URL_TITLE_LEN: usize = 100;
+pub const MAX_ATTACHMENT_BYTES: usize = 5_242_880;   // 5.0 MB，仅图片
+pub const MIN_RETRY: i64 = 30;
+pub const MAX_EXPIRE: i64 = 10_800;
+const IMAGE_MIMES: [&str; 5] = ["image/bmp", "image/gif", "image/jpeg", "image/png", "image/tiff"];
 pub const WS_URL: &str = "wss://client.pushover.net/push";
 pub const UA: &str = concat!("pushover-toolkit-app/", env!("CARGO_PKG_VERSION"), " (unofficial)");
 
@@ -214,6 +222,150 @@ pub async fn acknowledge(secret: &str, receipt: &str) -> Result<()> {
         Ok(())
     } else {
         bail!("确认失败: {}", api_errors(&body))
+    }
+}
+
+// ---------------------------------------------------------------- 发送侧（CLI 共用）
+
+/// 发送参数（CLI 与未来 GUI 发送视图共用）。
+#[derive(Default, Clone)]
+pub struct SendArgs {
+    pub title: Option<String>,
+    pub priority: i32,
+    pub html: bool,
+    pub monospace: bool,
+    pub device: Option<String>,
+    pub url: Option<String>,
+    pub url_title: Option<String>,
+    pub sound: Option<String>,
+    pub ttl: Option<i64>,
+    pub retry: Option<i64>,
+    pub expire: Option<i64>,
+    pub callback: Option<String>,
+    pub timestamp: Option<i64>,
+    pub image: Option<std::path::PathBuf>,
+}
+
+fn ext_mime(path: &std::path::Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "bmp" => Some("image/bmp"),
+        "tif" | "tiff" => Some("image/tiff"),
+        _ => None,
+    }
+}
+
+/// 校验 + 组装并发送一条消息；priority=2 返回值含 receipt。
+pub async fn send_message(
+    token: &str, user: &str, message: &str, a: &SendArgs,
+) -> Result<Value> {
+    if message.is_empty() { bail!("message 不能为空"); }
+    if message.chars().count() > MAX_MESSAGE_LEN {
+        bail!("正文超过 {MAX_MESSAGE_LEN} 字符");
+    }
+    if let Some(t) = &a.title {
+        if t.chars().count() > MAX_TITLE_LEN { bail!("标题超过 {MAX_TITLE_LEN} 字符"); }
+    }
+    if a.html && a.monospace { bail!("html 与 monospace 互斥"); }
+    if !(-2..=2).contains(&a.priority) { bail!("priority 取值范围 -2..2"); }
+
+    let mut form = reqwest::multipart::Form::new()
+        .text("token", token.to_string())
+        .text("user", user.to_string())
+        .text("message", message.to_string());
+    if let Some(t) = &a.title { form = form.text("title", t.clone()); }
+    if a.html { form = form.text("html", "1"); }
+    if a.monospace { form = form.text("monospace", "1"); }
+    if let Some(d) = &a.device { form = form.text("device", d.clone()); }
+    if let Some(u) = &a.url {
+        if u.chars().count() > MAX_URL_LEN { bail!("url 超过 {MAX_URL_LEN} 字符"); }
+        form = form.text("url", u.clone());
+    }
+    if let Some(ut) = &a.url_title {
+        if ut.chars().count() > MAX_URL_TITLE_LEN { bail!("url_title 超过 {MAX_URL_TITLE_LEN} 字符"); }
+        form = form.text("url_title", ut.clone());
+    }
+    if let Some(sd) = &a.sound { form = form.text("sound", sd.clone()); }
+    if let Some(cb) = &a.callback { form = form.text("callback", cb.clone()); }
+    if let Some(ts) = a.timestamp { form = form.text("timestamp", ts.to_string()); }
+
+    if a.priority == 2 {
+        let retry = a.retry.unwrap_or(MIN_RETRY);
+        let expire = a.expire.unwrap_or(3600);
+        if retry < MIN_RETRY { bail!("priority=2 时 retry 最小 {MIN_RETRY} 秒"); }
+        if expire > MAX_EXPIRE { bail!("priority=2 时 expire 最大 {MAX_EXPIRE} 秒"); }
+        form = form.text("priority", "2")
+            .text("retry", retry.to_string())
+            .text("expire", expire.to_string());
+    } else {
+        form = form.text("priority", a.priority.to_string());
+        if let Some(ttl) = a.ttl { form = form.text("ttl", ttl.to_string()); }
+    }
+
+    if let Some(img) = &a.image {
+        let bytes = std::fs::read(img).map_err(|e| anyhow!("读取附件失败: {e}"))?;
+        if bytes.len() > MAX_ATTACHMENT_BYTES {
+            bail!("附件 {} 字节，超过上限 {MAX_ATTACHMENT_BYTES}（5MB，仅图片）", bytes.len());
+        }
+        let mime = ext_mime(img)
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "application/octet-stream".into());
+        if !IMAGE_MIMES.contains(&mime.as_str()) {
+            eprintln!("[send] 警告: 附件类型 {mime} 不在官方支持列表（bmp/gif/jpeg/png/tiff）");
+        }
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(img.file_name().map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| "attachment".into()))
+            .mime_str(&mime)?;
+        form = form.part("attachment", part);
+    }
+
+    let r = client()
+        .post(format!("{API}/messages.json"))
+        .multipart(form)
+        .send()
+        .await?;
+    let body: Value = r.json().await?;
+    if body.get("status").and_then(|st| st.as_i64()) == Some(1) {
+        Ok(body)
+    } else {
+        bail!("发送失败: {}", api_errors(&body))
+    }
+}
+
+/// 校验凭据，返回该账号下的设备名列表。
+pub async fn validate(token: &str, user: &str, device: Option<&str>) -> Result<Vec<String>> {
+    let mut form = vec![("token", token.to_string()), ("user", user.to_string())];
+    if let Some(d) = device { form.push(("device", d.to_string())); }
+    let r = client()
+        .post(format!("{API}/users/validate.json"))
+        .form(&form)
+        .send()
+        .await?;
+    let body: Value = r.json().await?;
+    if body.get("status").and_then(|st| st.as_i64()) == Some(1) {
+        Ok(body.get("devices").and_then(|d| d.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .unwrap_or_default())
+    } else {
+        bail!("校验失败: {}", api_errors(&body))
+    }
+}
+
+/// 查询 priority=2 回执的确认状态。
+pub async fn receipt(token: &str, receipt_id: &str) -> Result<Value> {
+    let r = client()
+        .get(format!("{API}/receipts/{receipt_id}.json"))
+        .query(&[("token", token)])
+        .send()
+        .await?;
+    let body: Value = r.json().await?;
+    if body.get("status").and_then(|st| st.as_i64()) == Some(1) || body.get("acknowledged").is_some() {
+        Ok(body)
+    } else {
+        bail!("回执查询失败: {}", api_errors(&body))
     }
 }
 

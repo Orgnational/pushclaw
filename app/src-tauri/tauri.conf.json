@@ -1,7 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PushClaw",
-  "version": "0.7.0",
+  "mainBinaryName": "pushclaw-app",
+  "version": "0.8.0",
   "identifier": "com.orgnational.pushover-toolkit",
   "build": {
     "frontendDist": "../ui"

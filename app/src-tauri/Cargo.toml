@@ -1,7 +1,7 @@
 [package]
-name = "pushover-toolkit-app"
-version = "0.7.0"
-description = "PushClaw 桌面接收端（非官方 Pushover Open Client）"
+name = "pushclaw"
+version = "0.8.0"
+description = "PushClaw：非官方 Pushover 桌面客户端 + CLI（Open Client）"
 edition = "2021"
 rust-version = "1.77"
 
@@ -19,10 +19,23 @@ tokio-rustls = "0.26"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "0.26"
 futures-util = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+clap = { version = "4", features = ["derive"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 anyhow = "1"
 dirs = "5"
+
+[lib]
+name = "pushclaw_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pushclaw-app"
+path = "src/main.rs"
+
+[[bin]]
+name = "pushclaw"
+path = "src/bin/pushclaw.rs"
 
 [profile.release]
 strip = true

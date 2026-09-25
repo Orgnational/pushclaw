@@ -1,32 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-//! Pushover Toolkit 桌面端：托盘 + 原生通知 + 历史窗口。
+//! PushClaw 桌面端：托盘 + 原生通知 + 历史窗口。
 
-mod commands;
-mod pushover;
-mod store;
-
+use pushclaw_core::{commands, pushover, store, AppState, show_main};
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, RunEvent};
-
-pub struct AppState {
-    pub db: Mutex<rusqlite::Connection>,
-    pub session: Mutex<Option<store::Session>>,
-    /// 登录会话版本号：login 成功后 +1，ws 循环监听变化即重连
-    pub session_tx: tokio::sync::watch::Sender<u64>,
-    /// 最新一条新消息 id（通知点击后导航用）
-    pub latest_new: Mutex<Option<i64>>,
-    pub connected: AtomicBool,
-}
-
-pub fn show_main(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
-    }
-}
 
 fn main() {
     // rustls 提供者歧义防护（tokio-tungstenite 间接引入 aws-lc-rs 与 ring 并存）

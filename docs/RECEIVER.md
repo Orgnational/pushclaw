@@ -1,4 +1,7 @@
-# Pushover 接收端原型（macOS / Windows）
+# Python 接收端（已退役）
+
+> **本文档描述的 Python CLI 接收端已被桌面端 PushClaw.app 完全替代**（v0.8.0 起 Python 栈退役）。
+> 保留本文作为 Open Client API 协议细节与踩坑记录的参考。现行接收端见 [APP.md](APP.md)。
 
 基于 [Open Client API](https://pushover.net/api/client) 的自建桌面接收端，**非官方**，要求账号持有桌面许可（一次性 $4.99）。零第三方依赖（纯 Python 标准库 3.10+），单文件 `pushover_receiver.py`。
 
