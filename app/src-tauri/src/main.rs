@@ -29,6 +29,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::login,
+            commands::logout,
             commands::history,
             commands::get_message,
             commands::delete_messages,

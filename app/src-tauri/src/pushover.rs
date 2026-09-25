@@ -497,6 +497,16 @@ pub async fn ws_loop(app: tauri::AppHandle) {
             let msg = e.to_string();
             eprintln!("[ws] 断开: {msg}");
             let _ = app.emit("ws-error", msg.clone());
+            // logout 会话清空后：停止重连，等待下一次登录
+            {
+                let st = app.state::<AppState>();
+                if st.session.lock().unwrap().is_none() {
+                    eprintln!("[ws] 会话已登出，进入待登录状态");
+                    let mut rx = st.session_tx.subscribe();
+                    let _ = rx.changed().await;
+                    continue;
+                }
+            }
             // E/A 帧：非正常断开后的服务端冷却/接管，通常等一会儿就恢复。
             // E 连续 3 次仍被拒 → 同名重新注册自愈（避免积压通知长时间无法接收）
             if msg.contains("接管") {

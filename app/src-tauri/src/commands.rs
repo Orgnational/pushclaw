@@ -136,6 +136,20 @@ pub async fn ack(
 }
 
 #[tauri::command]
+pub fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    *state.session.lock().unwrap() = None;
+    let path = store::data_dir().join("app.json");
+    match std::fs::remove_file(&path) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    // 会话版本 +1：ws 循环检测到会话清空后进入待登录状态（不再自动重连）
+    let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn sync_now(app: tauri::AppHandle) -> Result<usize, String> {
     pushover::fetch_and_store(app)
         .await

@@ -252,6 +252,25 @@ $("sync-btn").addEventListener("click", async () => {
   try { await invoke("sync_now"); await loadHistory(); } catch (err) { console.error(err); }
 });
 
+// 退出登录（两步确认）：清本地会话回到登录页；云端设备需到官网设备页删除
+$("logout-btn").addEventListener("click", async () => {
+  const btn = $("logout-btn");
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "确认退出？";
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = "退出"; }, 4000);
+    return;
+  }
+  delete btn.dataset.armed;
+  btn.textContent = "退出";
+  try {
+    await invoke("logout");
+    setSelecting(false);
+    $("emergency-bar").classList.add("hidden");
+    await refreshStatus();
+  } catch (err) { report(err); }
+});
+
 // 详情便签
 $("detail-close").addEventListener("click", closeDetail);
 $("detail-overlay").addEventListener("click", (e) => {
@@ -320,7 +339,13 @@ listen("new-message", async () => {
   refreshEmergencyBar().catch(console.error);
 });
 listen("ws-status", (ev) => {
-  $("conn-dot").className = "dot " + (ev.payload === "connected" ? "on" : "off");
+  const on = ev.payload === "connected";
+  $("conn-dot").className = "dot " + (on ? "on" : "off");
+  if (on) { $("view-hint").textContent = ""; }
+});
+listen("ws-error", (ev) => {
+  // 连接问题可见化：持续显示直至恢复连接
+  $("view-hint").textContent = "⚠ " + ev.payload;
 });
 listen("do-sync", loadHistory);
 listen("navigate-latest", async (ev) => {
