@@ -74,8 +74,14 @@ jobs:
         shell: pwsh
         run: |
           $v = $env:GITHUB_REF_NAME -replace '^v',''
+          Write-Host "== target/release 内容 =="
+          Get-ChildItem "app/src-tauri/target/release" -Filter "*.exe" | Select-Object Name, Length
+          $exe = Get-ChildItem -Path "app/src-tauri/target" -Recurse -Filter "pushclaw.exe" -ErrorAction SilentlyContinue |
+                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw "pushclaw.exe 未在任何 target 目录中找到" }
+          Write-Host "CLI exe: $($exe.FullName) ($($exe.Length) bytes, $($exe.LastWriteTime))"
+          Copy-Item $exe.FullName "pushclaw-$v-windows-x64.exe"
           Copy-Item "app/src-tauri/target/release/bundle/nsis/PushClaw_${v}_x64-setup.exe" "PushClaw-${v}-windows-x64-setup.exe"
-          Copy-Item "app/src-tauri/target/release/pushclaw.exe" "pushclaw-${v}-windows-x64.exe"
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
