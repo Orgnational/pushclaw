@@ -44,6 +44,12 @@ jobs:
         run: npx tauri build --bundles app
 
       - name: Build CLI binary
+        if: matrix.target == 'macos'
+        working-directory: app/src-tauri
+        run: cargo build --release --bin pushclaw
+
+      - name: Build CLI binary (Windows)
+        if: matrix.target == 'windows'
         working-directory: app/src-tauri
         run: cargo build --release --bin pushclaw
 
