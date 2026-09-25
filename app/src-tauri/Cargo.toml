@@ -1,5 +1,6 @@
 [package]
 name = "pushclaw"
+default-run = "pushclaw-app"
 version = "0.8.0"
 description = "PushClaw：非官方 Pushover 桌面客户端 + CLI（Open Client）"
 edition = "2021"
@@ -34,7 +35,7 @@ name = "pushclaw-app"
 path = "src/main.rs"
 
 [[bin]]
-name = "pushclaw"
+name = "pushclaw-cli"
 path = "src/bin/pushclaw.rs"
 
 [profile.release]
