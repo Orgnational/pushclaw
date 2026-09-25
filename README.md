@@ -1,100 +1,89 @@
-# PushClaw
+# PushClaw 🐾
 
-> 应用名与 GitHub 仓库均为 PushClaw/pushclaw（遵循 Pushover Open Client 命名规范：第三方客户端名称不得含 "Pushover"）；本地工作目录名保留 pushover-toolkit 不影响任何使用。
+> 基于 [Pushover Open Client API](https://pushover.net/api/client) 的**非官方**桌面推送客户端 + CLI 收发工具箱。
+> 应用名遵循官方命名规范（第三方客户端不得使用 "Pushover"）；本项目与 Pushover 官方无关，也未获其支持。
 
-Pushover 收发命令行工具箱：**强提醒发送端 + 桌面接收端**，纯 Python 标准库（零第三方依赖），macOS / Windows 通用。
+![release](https://img.shields.io/badge/release-v0.7.2-blue) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey) ![desktop deps](https://img.shields.io/badge/desktop%20deps-rust%20%2B%20系统WebView-success) ![cli deps](https://img.shields.io/badge/cli%20deps-零第三方-orange)
 
-> 接收端基于 Pushover [Open Client API](https://pushover.net/api/client)，**非官方**实现，需账号持有桌面许可（一次性 $4.99）。
+PushClaw 把 Pushover 变成一条**完全属于自己的通知通道**：桌面端常驻托盘实时收信，原生系统通知归属应用本体，历史消息落本地 SQLite 可搜索、可归档；CLI 发送端一条命令搞定富文本、图片附件和强提醒。
 
-## 项目结构
+## ✨ 桌面端（PushClaw.app）
 
-```
-pushover-toolkit/
-├── pyproject.toml            # 打包元数据与入口（po-send / po-receive）
-├── config.example.json       # 发送端凭据模板
-├── src/
-│   ├── pushover_sender.py    # 发送端：send / validate / receipt
-│   └── pushover_receiver.py  # 接收端：login / register / run / history / ack / selftest
-├── app/                      # 桌面端（Tauri）：窗口/托盘/原生通知
-├── docs/
-│   ├── SENDER.md             # 发送端详解（用例、参数速查、JS/curl 等价实现）
-│   ├── RECEIVER.md           # 接收端详解（协议、DNS 兜底、行为边界、回归测试）
-│   └── APP.md                # 桌面端详解（构建、Windows/CI、与 CLI 的关系）
-├── tests/
-│   └── test_receiver_e2e.py  # 端到端集成测试（模拟服务端，无需账号）
-├── assets/                   # 图标与测试图片
-└── tools/make_icon.py        # 图标生成脚本
-```
+- **实时接收**：WebSocket 常驻 + 增量同步（服务端队列自动清理，不重复传输）；DNS 异常自动降级 DoH（1.1.1.1/8.8.8.8），实测启动到连接 ~1.2s
+- **原生通知**：归属显示 PushClaw（应用本体）；点击通知/Dock 激活 → 窗口定位到该消息
+- **紧急消息合规处理**：priority=2 到达时自动弹出窗口 + 页内常驻红色横幅，直至手动确认（官方指南要求）
+- **历史管理**：消息/归档双标签页、优先级筛选、关键词搜索、多选批量删除/归档（两步确认防误删）、19 位大 id 全程字符串传递无精度丢失
+- **便签式详情**：点击卡片弹出米黄便签——富文本全文、元信息、打开链接、紧急确认（全设备静默）
+- **托盘常驻**：左键显示/隐藏，关窗不退出；E 帧（异常冷却）自动同名重注册自愈
+- **官方合规**：非官方声明常驻页脚、`A` 帧不自动重连、启动不重放旧通知、拉取后清理服务端队列
 
-## 安装
+## ⌨️ CLI（零第三方依赖，纯 Python 标准库）
 
-要求 Python ≥ 3.10（Windows: `winget install Python.Python.3.12`）。零依赖，装完即用：
+| 命令 | 说明 |
+|---|---|
+| `po-send` | 发送：富文本（5 标签 HTML）、图片附件（≤5MB）、**强提醒**（priority=2，任意设备确认全设备静默）、定向设备、TTL、23 种音效 |
+| `po-receive` | 接收端（SSH/无 GUI 场景）：实时收 + SQLite 历史 + 系统 toast |
+| `po-send validate` | 校验凭据、列出账号下设备名 |
+| `po-send receipt <id>` | 查询紧急消息确认状态（谁确认的、何时） |
 
-```bash
-# 方式一：从源码目录安装（推荐，得到全局命令 po-send / po-receive）
-cd pushover-toolkit
-pip install .
+## 📦 安装
 
-# 方式二：离线安装（把 dist/ 里的 wheel 拷到目标机器）
-pip install dist/pushover_toolkit-*.whl
+**桌面端**（从 [Releases](https://github.com/Orgnational/pushclaw/releases) 下载）：
 
-# 方式三：不安装直接跑
-python3 src/pushover_sender.py --help
-python3 src/pushover_receiver.py --help
-```
+| 平台 | 产物 | 说明 |
+|---|---|---|
+| macOS (Apple Silicon) | `PushClaw-x.y.z-macos-arm64.zip` | 解压拖入 /Applications；未公证，首次打开需右键 → 打开 |
+| Windows | `PushClaw_x.y.z_x64_en-US.msi` | 双击安装；通知归属依赖安装器创建的快捷方式 |
 
-## 快速上手
-
-发送端（凭据配置见 `docs/SENDER.md`，三选一：命令行 / 环境变量 / `~/.config/pushover/config.json`）：
+**CLI**：
 
 ```bash
-po-send validate                       # 校验凭据，列出账号下设备名
-po-send "备份完成" -t "运维"            # 普通通知
-po-send "prod-01 CPU 95%" -p 2         # 强提醒：所有设备响铃直到任意设备确认
-po-send "报告" -i assets/test_chart.png --html   # 图片 + 富文本
+pip install pushover_toolkit-0.3.1-py3-none-any.whl   # 离线 wheel（dist/ 或 Release）
+# 或从源码：pip install .
 ```
 
-接收端（把本机注册为一个 Pushover 设备，历史落地本地 SQLite，实时弹系统 toast）：
+**首次使用**：
+
+1. [pushover.net](https://pushover.net) 注册账号、[创建应用](https://pushover.net/apps/build)拿 API Token（接收端需桌面许可 $4.99，一次性）
+2. 桌面端：打开 PushClaw → 登录视图填邮箱/密码（可选两步验证）→ 设备名填**这台机器独有的名字**
+3. CLI：`cp config.example.json ~/.config/pushover/config.json` 填入 token/user → `po-send validate`
+4. 测试：`po-send "hello" -d <你的设备名>`
+
+## 🛠 从源码构建
 
 ```bash
-po-receive login you@example.com '密码'      # 开两步验证时按提示加 --twofa
-po-receive register --name mac-air-desktop   # 每台机器用不同设备名
-po-receive run                               # 常驻：实时收 → 入库 → toast
-po-receive history --search 关键词            # 查历史（浏览器开 http://127.0.0.1:8899 看网页版全文）
+# 依赖：Node ≥18、Rust（rustup）、macOS 需 Xcode CLT / Windows 需 MSVC Build Tools
+cd app && npm install
+npx tauri build --bundles app     # macOS → .app
+npx tauri build --bundles msi     # Windows → .msi
 ```
 
-发送端 `-d <设备名>` 与接收端设备名对应，实现定向推送；任意设备确认（ack）后全设备静默是服务器原生行为。
-
-## 回归测试
+## 🏷 版本发布（自动化）
 
 ```bash
-po-receive selftest                        # ws 编解码 / ping-pong / 历史库（本地回环）
-python3 -u tests/test_receiver_e2e.py      # 模拟服务端全链路 15 项断言（无需账号）
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-## 打包分发
+GitHub Actions 自动完成：双平台构建 → 从 tag 同步版本号（单一事实来源）→ 创建 Release 并附上 mac zip + win msi。
 
-```bash
-# 本机构建产物（wheel + 源码包）
-python3 -m pip install --quiet build && python3 -m build
-# 产物在 dist/：pushover_toolkit-<版本>-py3-none-any.whl 与 .tar.gz
+## 📁 项目结构
+
+```
+pushclaw/
+├── app/                      # 桌面端（Tauri 2：Rust 后端 + 原生 JS 前端）
+│   ├── src-tauri/src/        #   pushover.rs(协议) store.rs(存储) commands.rs(命令) main.rs(壳)
+│   └── ui/                   #   index.html + app.js + style.css（自写设计系统）
+├── src/                      # CLI：pushover_sender.py / pushover_receiver.py（纯标准库）
+├── docs/                     # APP.md / RECEIVER.md / SENDER.md 详解
+├── tests/                    # E2E（模拟服务端 15 项）+ 前端逻辑回归（jsdom 13 项）
+├── assets/  tools/           # 图标与生成脚本
+└── .github/workflows/        # tag → 双平台构建 → Release
 ```
 
-分发到新设备的步骤：
+## ⚖️ 合规声明
 
-1. 目标机装好 Python ≥ 3.10
-2. 拷贝 `dist/pushover_toolkit-*.whl`（或整个目录）
-3. `pip install pushover_toolkit-*.whl`
-4. 发送端：配凭据（`cp config.example.json ~/.config/pushover/config.json`）→ `po-send validate`
-5. 接收端：`po-receive login ...` → `po-receive register --name <该机器的名字>` → `po-receive run`
+本项目是**非官方** Pushover Open Client，按[官方分发指南](https://pushover.net/api/client)实现：应用名不含 "Pushover"、界面明确披露非官方身份、不使用官方 Logo、全部功能运行在用户自己的设备上。使用本工具需要有效的 Pushover 账号及桌面许可（$4.99，一次性）。
 
-> Windows 常驻建议：`start /b po-receive run`，或注册为计划任务开机自启；macOS 可用 LaunchAgent（Phase 2 计划内置）。
+## License
 
-## 桌面端（独立应用）
-
-不想跑命令行？桌面端（PushClaw）是独立应用：登录一次，托盘常驻，通知归属 "PushClaw"，点击通知直达历史窗口。见 [docs/APP.md](docs/APP.md)。
-
-## 文档
-
-- 发送端详解与参数速查：[docs/SENDER.md](docs/SENDER.md)
-- 接收端协议细节、DNS 兜底、行为边界：[docs/RECEIVER.md](docs/RECEIVER.md)
+MIT
