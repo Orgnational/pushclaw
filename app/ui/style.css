@@ -340,7 +340,16 @@ footer {
 .emg-ack { padding: 3px 12px; font-size: 12px; flex: none; }
 
 /* ---------- 设置页 ---------- */
-#settings-view { flex: 1; overflow-y: auto; padding: 14px 16px; }
+#settings-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  padding: 14px 16px 20px;
+}
+#settings-view .set-sec { max-width: 640px; }
+#settings-view h3 { letter-spacing: .3px; }
 #settings-view.hidden { display: none !important; }
 .set-sec {
   background: var(--card); border: 1px solid var(--border-soft);
