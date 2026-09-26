@@ -25,9 +25,13 @@ fn main() {
             session_tx: tx,
             latest_new: Mutex::new(None),
             connected: AtomicBool::new(false),
+            settings: Mutex::new(store::load_settings()),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
+            commands::get_settings,
+            commands::save_settings,
+            commands::send_test,
             commands::login,
             commands::logout,
             commands::history,

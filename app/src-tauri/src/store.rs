@@ -59,6 +59,37 @@ pub struct Msg {
     pub archived: bool,
 }
 
+#[derive(Clone, Serialize, serde::Deserialize)]
+pub struct Settings {
+    #[serde(default)]
+    pub send_token: String,
+    #[serde(default)]
+    pub send_user: String,
+    #[serde(default = "default_true")]
+    pub toast: bool,
+}
+fn default_true() -> bool { true }
+impl Default for Settings {
+    fn default() -> Self {
+        Settings { send_token: String::new(), send_user: String::new(), toast: true }
+    }
+}
+
+pub fn settings_path() -> PathBuf { data_dir().join("settings.json") }
+
+pub fn load_settings() -> Settings {
+    std::fs::read_to_string(settings_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_settings(st: &Settings) -> anyhow::Result<()> {
+    std::fs::create_dir_all(data_dir())?;
+    std::fs::write(settings_path(), serde_json::to_string_pretty(st)?)?;
+    Ok(())
+}
+
 pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .expect("无法定位用户数据目录")

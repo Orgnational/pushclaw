@@ -174,11 +174,58 @@ $("login-form").addEventListener("submit", async (e) => {
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
   t.classList.add("active");
-  state.view = t.dataset.view;
-  state.selected.clear();
-  setSelecting(false);
-  loadHistory();
+  const isSettings = t.dataset.view === "settings";
+  state.view = isSettings ? "inbox" : t.dataset.view;
+  showSettings(isSettings);
+  if (!isSettings) {
+    state.selected.clear();
+    setSelecting(false);
+    loadHistory();
+  }
 }));
+
+// 设置视图切换
+function showSettings(on) {
+  ["search", "priority-chips"].forEach((id) => $(id).parentElement.classList.toggle("hidden", on));
+  $("list").classList.toggle("hidden", on);
+  $("emergency-bar").classList.toggle("hidden", on || $("emergency-bar").innerHTML === "");
+  $("settings-view").classList.toggle("hidden", !on);
+  if (on) loadSettings();
+}
+
+async function loadSettings() {
+  const st = await invoke("get_settings");
+  $("set-device").textContent = st.device_name || "-";
+  $("set-email").textContent = st.email || "-";
+  $("set-version").textContent = "v" + st.version;
+  $("set-toast").checked = st.toast;
+  $("set-token").value = st.send_token;
+  $("set-user").value = st.send_user;
+}
+
+$("set-save").addEventListener("click", async () => {
+  const btn = $("set-save");
+  btn.disabled = true; btn.textContent = "保存中…";
+  try {
+    await invoke("save_settings", { settings: {
+      send_token: $("set-token").value.trim(),
+      send_user: $("set-user").value.trim(),
+      toast: $("set-toast").checked,
+    }});
+    btn.textContent = "✓ 已保存";
+  } catch (err) { report(err); btn.textContent = "保存"; }
+  setTimeout(() => { btn.textContent = "保存"; btn.disabled = false; }, 2000);
+});
+
+$("set-sendtest").addEventListener("click", async () => {
+  const btn = $("set-sendtest");
+  btn.disabled = true; btn.textContent = "发送中…";
+  try {
+    await invoke("send_test");
+    btn.textContent = "✓ 已发送";
+  } catch (err) { report(err); btn.textContent = "发送失败"; }
+  setTimeout(() => { btn.textContent = "发送测试消息"; btn.disabled = false; }, 3000);
+});
 
 // 优先级筛选
 $("priority-chips").addEventListener("click", (e) => {

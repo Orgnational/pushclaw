@@ -42,6 +42,7 @@
       <nav class="tabs">
         <button class="tab active" data-view="inbox">消息</button>
         <button class="tab" data-view="archive">归档</button>
+        <button class="tab" data-view="settings">设置</button>
       </nav>
       <div class="header-actions">
         <button id="select-btn" class="ghost">选择</button>
@@ -71,6 +72,28 @@
 
     <div id="emergency-bar" class="hidden"></div>
     <main id="list"></main>
+    <div id="settings-view" class="hidden">
+      <section class="set-sec">
+        <h3>账户</h3>
+        <div class="set-row"><span class="k">设备名</span><span id="set-device" class="v"></span></div>
+        <div class="set-row"><span class="k">邮箱</span><span id="set-email" class="v"></span></div>
+        <div class="set-row"><span class="k">版本</span><span id="set-version" class="v"></span></div>
+      </section>
+      <section class="set-sec">
+        <h3>通知</h3>
+        <label class="switch-row"><input id="set-toast" type="checkbox" /> 收到新消息时弹出系统 Toast</label>
+      </section>
+      <section class="set-sec">
+        <h3>发送凭据（测试发送用）</h3>
+        <label>API Token<input id="set-token" type="text" placeholder="30 位应用 Token" /></label>
+        <label>User Key<input id="set-user" type="text" placeholder="账号 User Key" /></label>
+        <div class="set-actions">
+          <button id="set-save" class="ghost">保存</button>
+          <button id="set-sendtest" class="ghost">发送测试消息</button>
+        </div>
+        <p class="muted small">凭据保存在本机 settings.json；此处与 CLI 共用配置时保存会以本页为准。</p>
+      </section>
+    </div>
     <footer>
       <span id="count-label"></span>
       <span id="view-hint" class="muted small"></span>

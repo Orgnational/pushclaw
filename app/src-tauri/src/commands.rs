@@ -13,6 +13,7 @@ pub struct Status {
     pub device_name: String,
     pub connected: bool,
     pub db_path: String,
+    pub version: String,
 }
 
 #[tauri::command]
@@ -24,6 +25,7 @@ pub fn get_status(state: tauri::State<'_, AppState>) -> Status {
         device_name: sess.as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
         connected: state.connected.load(Ordering::Relaxed),
         db_path: store::db_path().display().to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }
 
@@ -148,6 +150,83 @@ pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let _ = state.session_tx.send(ver);
     eprintln!("[logout] 完成（会话版本 {ver}）");
     Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AppSettings {
+    pub send_token: String,
+    pub send_user: String,
+    pub toast: bool,
+    pub version: String,
+    pub device_name: String,
+}
+
+#[tauri::command]
+pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
+    let st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    // 发送凭据缺省时，尝试从 CLI 配置文件带出（用户已在 CLI 配置过则零输入）
+    let (mut token, mut user) = (st.send_token.clone(), st.send_user.clone());
+    if token.is_empty() || user.is_empty() {
+        let cfg = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
+            .join(".config/pushover/config.json");
+        if let Ok(raw) = std::fs::read_to_string(&cfg) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if token.is_empty() { token = v["token"].as_str().unwrap_or("").into(); }
+                if user.is_empty() { user = v["user"].as_str().unwrap_or("").into(); }
+            }
+        }
+    }
+    AppSettings {
+        send_token: token,
+        send_user: user,
+        toast: st.toast,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        device_name: state.session.lock().unwrap_or_else(|p| p.into_inner())
+            .as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
+    }
+}
+
+#[tauri::command]
+pub fn save_settings(
+    state: tauri::State<'_, AppState>,
+    settings: AppSettings,
+) -> Result<(), String> {
+    let st = store::Settings {
+        send_token: settings.send_token,
+        send_user: settings.send_user,
+        toast: settings.toast,
+    };
+    store::save_settings(&st).map_err(|e| e.to_string())?;
+    *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn send_test(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let (token, user) = {
+        let st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        (st.send_token, st.send_user)
+    };
+    if token.is_empty() || user.is_empty() {
+        return Err("请先填写发送凭据（token 与 user key）".into());
+    }
+    let args = crate::pushover::SendArgs {
+        title: Some("PushClaw 测试".into()),
+        ..Default::default()
+    };
+    let body = crate::pushover::send_message(
+        &token, &user,
+        &format!("PushClaw 设置页测试消息 {}", chrono_now()),
+        &args,
+    ).await.map_err(|e| e.to_string())?;
+    Ok(body["request"].as_str().unwrap_or("ok").to_string())
+}
+
+fn chrono_now() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| format!("(unix {})", d.as_secs()))
+        .unwrap_or_default()
 }
 
 #[tauri::command]

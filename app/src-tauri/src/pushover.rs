@@ -478,7 +478,13 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
             crate::show_main(&app);
         }
     }
-    // 系统通知：只弹新消息，一次最多 3 条防刷屏
+    let toast_on = {
+        let st = app.state::<AppState>();
+        let guard = st.settings.lock().unwrap_or_else(|p| p.into_inner());
+        guard.toast
+    };
+    // 系统通知：只弹新消息，一次最多 3 条防刷屏；设置页可关
+    if !toast_on { return Ok(n); }
     for m in new_msgs.iter().rev().take(3).rev() {
         let title = if m.title.is_empty() {
             if m.app.is_empty() { "Pushover".to_string() } else { m.app.clone() }

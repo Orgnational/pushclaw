@@ -16,6 +16,7 @@ pub struct AppState {
     /// 最新一条新消息 id（通知点击后导航用）
     pub latest_new: Mutex<Option<i64>>,
     pub connected: AtomicBool,
+    pub settings: Mutex<store::Settings>,
 }
 
 /// 显示并聚焦主窗口

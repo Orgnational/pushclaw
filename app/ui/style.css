@@ -325,3 +325,19 @@ footer {
 .emg-item + .emg-item { border-top: 1px dashed rgba(224, 85, 85, .2); }
 .emg-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
 .emg-ack { padding: 3px 12px; font-size: 12px; flex: none; }
+
+/* ---------- 设置页 ---------- */
+#settings-view { flex: 1; overflow-y: auto; padding: 14px 16px; }
+#settings-view.hidden { display: none !important; }
+.set-sec {
+  background: var(--card); border: 1px solid var(--border-soft);
+  border-radius: var(--radius); padding: 14px 16px; margin: 10px 0;
+}
+.set-sec h3 { margin: 0 0 10px; font-size: 13px; color: var(--brand-soft); }
+.set-row { display: flex; gap: 10px; padding: 3px 0; font-size: 13px; }
+.set-row .k { color: var(--muted); width: 64px; flex: none; }
+.set-row .v { color: var(--text); }
+.switch-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.switch-row input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--brand); }
+.set-actions { display: flex; gap: 8px; margin-top: 12px; }
+.set-actions .ghost { padding: 6px 14px; }
