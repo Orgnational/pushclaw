@@ -39,9 +39,17 @@ pub async fn login(
     let (user_key, secret) = pushover::login(&email, &password, twofa.as_deref())
         .await
         .map_err(|e| e.to_string())?;
-    let device_id = pushover::register(&secret, &device_name)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 注册响应可能因网络停滞丢失（服务端可能已注册成功）——自动重试一次；
+    // 最坏情况官网出现同名重复设备，可在设备页手动清理
+    let device_id = match pushover::register(&secret, &device_name).await {
+        Ok(id) => id,
+        Err(first) => {
+            eprintln!("[login] 注册响应异常（{first}），重试一次");
+            pushover::register(&secret, &device_name)
+                .await
+                .map_err(|e| format!("注册失败: {first} / 重试仍失败: {e}"))?
+        }
+    };
     let sess = Session {
         email,
         user_key,
