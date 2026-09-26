@@ -274,7 +274,7 @@ function showSettings(on) {
 async function loadSettings() {
   const st = await invoke("get_settings");
   $("set-device").textContent = st.device_name || "-";
-  $("set-email").textContent = st.email || "-";
+  const emailEl = $("set-email"); if (emailEl) emailEl.textContent = st.email || "-";
   $("set-version").textContent = "v" + st.version;
   $("set-toast").checked = st.toast;
   $("set-sound").checked = st.notify_sound;
