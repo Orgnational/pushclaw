@@ -92,6 +92,12 @@ fn load_credentials() -> Result<(String, String)> {
             if user.is_none() { user = v["user"].as_str().map(String::from); }
         }
     }
+    if token.is_none() || user.is_none() {
+        // 桌面端设置页保存的发送凭据（settings.json）
+        let st = pushclaw_core::store::load_settings();
+        if token.is_none() && !st.send_token.is_empty() { token = Some(st.send_token); }
+        if user.is_none() && !st.send_user.is_empty() { user = Some(st.send_user); }
+    }
     if user.is_none() {
         // 桌面端会话里存的 user_key 与账号一致，可兜底
         let app_cfg = pushclaw_core::store::data_dir().join("app.json");
@@ -117,7 +123,9 @@ fn load_token() -> Result<String> {
             if let Some(t) = v["token"].as_str() { return Ok(t.to_string()); }
         }
     }
-    bail!("缺少 token：PUSHOVER_TOKEN 环境变量，或 ~/.config/pushover/config.json")
+    let st = pushclaw_core::store::load_settings();
+    if !st.send_token.is_empty() { return Ok(st.send_token); }
+    bail!("缺少 token：PUSHOVER_TOKEN 环境变量、设置页发送凭据，或 ~/.config/pushover/config.json")
 }
 
 #[tokio::main]
