@@ -129,14 +129,23 @@ async fn main() {
     }
 }
 
-async fn run(cli: Cli) -> Result<()> {
+async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.cmd {
         Cmd::Send { message, title, image, priority, html, monospace, device,
                     url, url_title, sound, ttl, retry, expire, callback,
                     timestamp, json } => {
+            // 管道输入：正文为 "-" 时读取 stdin
+            let message = if message == "-" {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)
+                    .map_err(|e| format!("读取 stdin 失败: {e}"))?;
+                buf.trim_end().to_string()
+            } else { message };
             let (token, user) = load_credentials()?;
             let args = SendArgs { title, priority, html, monospace, device, url,
-                url_title, sound, ttl, retry, expire, callback, timestamp, image };
+                url_title, sound, ttl, retry, expire, callback, timestamp, image,
+                image_bytes: None };
             let body = pushover::send_message(&token, &user, &message, &args).await?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&body)?);

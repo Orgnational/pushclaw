@@ -1,7 +1,7 @@
 [package]
 name = "pushclaw"
 default-run = "pushclaw-app"
-version = "0.10.0"
+version = "0.11.0"
 description = "PushClaw：非官方 Pushover 桌面客户端 + CLI（Open Client）"
 edition = "2021"
 rust-version = "1.77"

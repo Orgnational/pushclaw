@@ -286,6 +286,84 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
+/// 发送凭据：设置页保存的优先，缺省回落 CLI config.json
+fn resolve_send_creds(state: &tauri::State<'_, AppState>) -> Result<(String, String), String> {
+    let st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    let (mut token, mut user) = (st.send_token.clone(), st.send_user.clone());
+    if token.is_empty() || user.is_empty() {
+        let cfg = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
+            .join(".config/pushover/config.json");
+        if let Ok(raw) = std::fs::read_to_string(&cfg) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if token.is_empty() { token = v["token"].as_str().unwrap_or("").into(); }
+                if user.is_empty() { user = v["user"].as_str().unwrap_or("").into(); }
+            }
+        }
+    }
+    if token.is_empty() || user.is_empty() {
+        return Err("请先在设置页填写发送凭据".into());
+    }
+    Ok((token, user))
+}
+
+fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes: Vec<u32> = s.bytes()
+        .filter(|c| *c != b'=')
+        .map(|c| T.iter().position(|t| *t == c)
+            .map(|i| i as u32)
+            .ok_or_else(|| format!("非法 base64 字符: {c}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4 + 3);
+    for ch in bytes.chunks(4) {
+        let n = ch.iter().enumerate().fold(0u32, |acc, (i, b)| acc | (b << (18 - 6 * i)));
+        out.push((n >> 16) as u8);
+        if ch.len() > 2 { out.push((n >> 8) as u8); }
+        if ch.len() > 3 { out.push(n as u8); }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn send_message(
+    state: tauri::State<'_, AppState>,
+    message: String,
+    title: Option<String>,
+    html: Option<bool>,
+    priority: Option<i32>,
+    device: Option<String>,
+    url: Option<String>,
+    image_b64: Option<String>,
+    image_name: Option<String>,
+) -> Result<String, String> {
+    let (token, user) = resolve_send_creds(&state)?;
+    let image_bytes = match (image_b64, image_name) {
+        (Some(b64), Some(name)) => Some((b64_decode(&b64)?, name)),
+        _ => None,
+    };
+    let args = crate::pushover::SendArgs {
+        title,
+        priority: priority.unwrap_or(0),
+        html: html.unwrap_or(false),
+        device,
+        url,
+        image_bytes,
+        ..Default::default()
+    };
+    let body = crate::pushover::send_message(&token, &user, &message, &args)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(body["request"].as_str().unwrap_or("ok").to_string())
+}
+
+#[tauri::command]
+pub async fn list_devices(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let (token, user) = resolve_send_creds(&state)?;
+    crate::pushover::validate(&token, &user, None)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn sync_now(app: tauri::AppHandle) -> Result<usize, String> {
     pushover::fetch_and_store(app)

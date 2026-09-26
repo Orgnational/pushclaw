@@ -262,10 +262,12 @@ pub struct SendArgs {
     pub callback: Option<String>,
     pub timestamp: Option<i64>,
     pub image: Option<std::path::PathBuf>,
+    /// GUI 路径：直接传附件字节（文件名用于扩展名与 multipart）
+    pub image_bytes: Option<(Vec<u8>, String)>,
 }
 
-fn ext_mime(path: &std::path::Path) -> Option<&'static str> {
-    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+fn ext_mime_ext(ext: &str) -> Option<&'static str> {
+    match ext.to_ascii_lowercase().as_str() {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
         "gif" => Some("image/gif"),
@@ -273,6 +275,10 @@ fn ext_mime(path: &std::path::Path) -> Option<&'static str> {
         "tif" | "tiff" => Some("image/tiff"),
         _ => None,
     }
+}
+
+fn ext_mime(path: &std::path::Path) -> Option<&'static str> {
+    ext_mime_ext(path.extension()?.to_str()?)
 }
 
 /// 校验 + 组装并发送一条消息；priority=2 返回值含 receipt。
@@ -322,20 +328,31 @@ pub async fn send_message(
         if let Some(ttl) = a.ttl { form = form.text("ttl", ttl.to_string()); }
     }
 
-    if let Some(img) = &a.image {
+    let (att_bytes, att_name) = if let Some((bytes, name)) = &a.image_bytes {
+        (bytes.clone(), name.clone())
+    } else if let Some(img) = &a.image {
         let bytes = std::fs::read(img).map_err(|e| anyhow!("读取附件失败: {e}"))?;
-        if bytes.len() > MAX_ATTACHMENT_BYTES {
-            bail!("附件 {} 字节，超过上限 {MAX_ATTACHMENT_BYTES}（5MB，仅图片）", bytes.len());
+        let name = img.file_name().map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_else(|| "attachment".into());
+        (bytes, name)
+    } else {
+        (Vec::new(), String::new())
+    };
+    if !att_bytes.is_empty() {
+        if att_bytes.len() > MAX_ATTACHMENT_BYTES {
+            bail!("附件 {} 字节，超过上限 {MAX_ATTACHMENT_BYTES}（5MB，仅图片）", att_bytes.len());
         }
-        let mime = ext_mime(img)
+        let mime = std::path::Path::new(&att_name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(|e| ext_mime_ext(e))
             .map(|m| m.to_string())
             .unwrap_or_else(|| "application/octet-stream".into());
         if !IMAGE_MIMES.contains(&mime.as_str()) {
             eprintln!("[send] 警告: 附件类型 {mime} 不在官方支持列表（bmp/gif/jpeg/png/tiff）");
         }
-        let part = reqwest::multipart::Part::bytes(bytes)
-            .file_name(img.file_name().map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_else(|| "attachment".into()))
+        let part = reqwest::multipart::Part::bytes(att_bytes)
+            .file_name(att_name)
             .mime_str(&mime)?;
         form = form.part("attachment", part);
     }

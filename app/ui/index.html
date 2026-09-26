@@ -42,6 +42,7 @@
       <nav class="tabs">
         <button class="tab active" data-view="inbox">消息</button>
         <button class="tab" data-view="archive">归档</button>
+        <button class="tab" data-view="send">发送</button>
         <button class="tab" data-view="settings">设置</button>
       </nav>
       <div class="header-actions">
@@ -72,6 +73,31 @@
 
     <div id="emergency-bar" class="hidden"></div>
     <main id="list"></main>
+    <div id="send-view" class="hidden">
+      <section class="set-sec">
+        <h3>新消息</h3>
+        <label>标题（可选）<input id="snd-title" type="text" /></label>
+        <label>正文<textarea id="snd-message" rows="4" placeholder="支持 5 标签 HTML（勾选富文本）或纯文本"></textarea></label>
+        <label class="switch-row"><input id="snd-html" type="checkbox" /> 富文本（HTML）</label>
+        <label>优先级
+          <select id="snd-priority">
+            <option value="0">常规</option>
+            <option value="1">高优（一次响铃）</option>
+            <option value="2">紧急（响到确认）</option>
+            <option value="-1">静默</option>
+          </select>
+        </label>
+        <label>图片附件（≤5MB，可选）<input id="snd-image" type="file" accept=".png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff" /></label>
+        <label>附加链接<input id="snd-url" type="url" placeholder="https:// 或 app:// 深链" /></label>
+        <label>目标设备
+          <select id="snd-device"><option value="">全部设备</option></select>
+        </label>
+        <div class="set-actions">
+          <button id="snd-send" class="danger">发送</button>
+          <span id="snd-result" class="muted small"></span>
+        </div>
+      </section>
+    </div>
     <div id="settings-view" class="hidden">
       <section class="set-sec">
         <h3>账户</h3>

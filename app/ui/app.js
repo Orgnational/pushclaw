@@ -202,14 +202,64 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
   document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
   t.classList.add("active");
   const isSettings = t.dataset.view === "settings";
-  state.view = isSettings ? "inbox" : t.dataset.view;
+  const isSend = t.dataset.view === "send";
+  state.view = isSettings || isSend ? "inbox" : t.dataset.view;
   showSettings(isSettings);
-  if (!isSettings) {
+  showSend(isSend);
+  if (!isSettings && !isSend) {
     state.selected.clear();
     setSelecting(false);
     loadHistory();
   }
 }));
+
+// 发送视图
+let deviceOptions = null;
+function showSend(on) {
+  ["search"].forEach((id) => $(id).parentElement.classList.toggle("hidden", on));
+  $("list").classList.toggle("hidden", on);
+  $("emergency-bar").classList.toggle("hidden", on || $("emergency-bar").innerHTML === "");
+  $("send-view").classList.toggle("hidden", !on);
+  if (on && deviceOptions === null) {
+    invoke("list_devices").then((devs) => {
+      deviceOptions = devs;
+      $("snd-device").innerHTML = '<option value="">全部设备</option>' +
+        devs.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
+    }).catch(report);
+  }
+}
+
+async function doSend() {
+  const btn = $("snd-send"), res = $("snd-result");
+  btn.disabled = true; res.textContent = "发送中…";
+  try {
+    const imgInput = $("snd-image");
+    let imageB64 = null, imageName = null;
+    if (imgInput.files[0]) {
+      const buf = await imgInput.files[0].arrayBuffer();
+      let raw = "";
+      const bytes = new Uint8Array(buf);
+      for (let i = 0; i < bytes.length; i += 0x8000)
+        raw += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      imageB64 = btoa(raw);
+      imageName = imgInput.files[0].name;
+    }
+    await invoke("send_message", {
+      message: $("snd-message").value,
+      title: $("snd-title").value.trim() || null,
+      html: $("snd-html").checked,
+      priority: Number($("snd-priority").value),
+      device: $("snd-device").value || null,
+      url: $("snd-url").value.trim() || null,
+      image_b64: imageB64,
+      image_name: imageName,
+    });
+    res.textContent = `✓ 已发送 ${new Date().toLocaleTimeString()}`;
+    $("snd-message").value = "";
+    $("snd-image").value = "";
+  } catch (err) { res.textContent = "⚠ " + err; }
+  btn.disabled = false;
+}
 
 // 设置视图切换
 function showSettings(on) {
