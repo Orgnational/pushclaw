@@ -55,10 +55,10 @@ npx tauri build --bundles app     # 产出 .app
 cd app
 npm install
 npx tauri icon icon_1024.png
-npx tauri build --bundles msi     # 产出 .msi 安装包
+npx tauri build --bundles nsis  # 产出 PushClaw_x.y.z_x64-setup.exe（NSIS 安装器）
 ```
 
-无 Windows 机器时可用 CI 构建：仓库已带 `.github/workflows/build.yml`（push tag 自动产出 macOS .app zip + CLI 二进制、Windows .msi 的 Release 附件）。
+无 Windows 机器时可用 CI 构建：仓库已带 `.github/workflows/build.yml`（push tag 自动产出 macOS .app zip + macOS/Windows CLI 二进制 + Windows NSIS 安装器的 Release 附件）。
 
 ## 与 CLI 的关系
 

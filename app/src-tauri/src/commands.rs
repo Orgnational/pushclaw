@@ -167,13 +167,21 @@ pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct AppSettings {
+    #[serde(default)]
     pub send_token: String,
+    #[serde(default)]
     pub send_user: String,
+    #[serde(default)]
     pub toast: bool,
+    #[serde(default)]
     pub notify_sound: bool,
+    #[serde(default)]
     pub quiet_enabled: bool,
+    #[serde(default)]
     pub quiet_start: String,
+    #[serde(default)]
     pub quiet_end: String,
+    #[serde(default)]
     pub muted_apps: Vec<String>,
     /// 只读展示字段：前端保存时不回传，反序列化给缺省
     #[serde(default)]
