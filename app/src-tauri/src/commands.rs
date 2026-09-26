@@ -175,7 +175,10 @@ pub struct AppSettings {
     pub quiet_start: String,
     pub quiet_end: String,
     pub muted_apps: Vec<String>,
+    /// 只读展示字段：前端保存时不回传，反序列化给缺省
+    #[serde(default)]
     pub version: String,
+    #[serde(default)]
     pub device_name: String,
 }
 
@@ -394,4 +397,30 @@ pub fn open_url(url: String) {
         .spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppSettings;
+
+    /// 回归：前端 save_settings 载荷（不含 version/device_name）必须可反序列化。
+    /// v0.11.x 曾因这两个字段必填导致保存被 serde 拒绝（UI 显示保存无效）。
+    #[test]
+    fn frontend_payload_deserializes() {
+        let payload = r#"{
+            "send_token": "token-x",
+            "send_user": "user-x",
+            "toast": true,
+            "notify_sound": false,
+            "quiet_enabled": true,
+            "quiet_start": "23:00",
+            "quiet_end": "08:00",
+            "muted_apps": ["AppA", "AppB"]
+        }"#;
+        let st: AppSettings =
+            serde_json::from_str(payload).expect("前端载荷应可反序列化");
+        assert_eq!(st.send_token, "token-x");
+        assert!(st.quiet_enabled);
+        assert_eq!(st.muted_apps.len(), 2);
+    }
 }
