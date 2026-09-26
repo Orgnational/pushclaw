@@ -37,6 +37,7 @@ pub async fn login(
     password: String,
     twofa: Option<String>,
     device_name: String,
+    send_token: Option<String>,
 ) -> Result<(), String> {
     let sess = crate::pushover::login_and_register(
         &email, &password, twofa.as_deref(), &device_name,
@@ -45,6 +46,18 @@ pub async fn login(
     .map_err(|e| e.to_string())?;
     eprintln!("[login] ③ 保存会话...");
     store::save_session(&sess).map_err(|e| e.to_string())?;
+    // 可选发送凭据：填了 Token 就把"发送身份"一并配置好（User Key 用登录返回的）
+    if let Some(tk) = send_token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        if tk.chars().count() != 30 {
+            return Err("API Token 应为 30 位字符，请检查后重试".into());
+        }
+        let mut st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        st.send_token = tk.to_string();
+        st.send_user = sess.user_key.clone();
+        store::save_settings(&st).map_err(|e| e.to_string())?;
+        *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st;
+        eprintln!("[login] 发送凭据已保存");
+    }
     *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
     eprintln!("[login] ④ 通知 ws 线程...");
     let _ = state.session_tx.send(*state.session_tx.borrow() + 1);

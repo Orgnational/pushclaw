@@ -182,6 +182,7 @@ $("login-form").addEventListener("submit", async (e) => {
         password: $("f-password").value,
         twofa: $("f-twofa").value.trim() || null,
         deviceName: $("f-device").value.trim(),
+        send_token: $("f-token").value.trim() || null,
       }),
       new Promise((_, rej) => setTimeout(
         () => rej(new Error("登录超时（30 秒）——请检查网络后重试；若反复出现请重启应用")), 30000)),

@@ -22,6 +22,11 @@
         <label>两步验证码 <span class="muted small">（开启了两步验证才填）</span>
           <input id="f-twofa" type="text" inputmode="numeric" placeholder="可选" /></label>
         <label>设备名<input id="f-device" type="text" value="mac-app" required pattern="[A-Za-z0-9_-]{1,25}" /></label>
+        <label>API Token <span class="muted small">（可选，30 位）</span>
+          <input id="f-token" type="text" placeholder="不填则只能接收" autocomplete="off" /></label>
+        <p class="muted small">Token 的作用：标识"哪个应用在发消息"（通知上显示的应用身份）。
+        填了它，这台机器就能从"发送"标签直接发消息；不填只影响发送，接收完全正常，
+        之后可在设置页补填。在 pushover.net/apps/build 免费创建。</p>
         <div id="login-error" class="error hidden"></div>
         <button id="login-btn" type="submit">登录并注册本机</button>
       </form>
