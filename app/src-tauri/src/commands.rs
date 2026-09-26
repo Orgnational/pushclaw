@@ -136,16 +136,22 @@ pub async fn ack(
 }
 
 #[tauri::command]
-pub fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    *state.session.lock().unwrap() = None;
+pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    // 异步命令：避免同步命令占用主线程与 webview IPC 交互导致的冻结
+    eprintln!("[logout] 开始");
+    {
+        let mut guard = state.session.lock().map_err(|e| e.to_string())?;
+        *guard = None;
+    }
     let path = store::data_dir().join("app.json");
     match std::fs::remove_file(&path) {
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
-    // 会话版本 +1：ws 循环检测到会话清空后进入待登录状态（不再自动重连）
-    let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
+    let ver = { *state.session_tx.borrow() + 1 };
+    let _ = state.session_tx.send(ver);
+    eprintln!("[logout] 完成（会话版本 {ver}）");
     Ok(())
 }
 

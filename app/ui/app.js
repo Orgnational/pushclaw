@@ -264,11 +264,15 @@ $("logout-btn").addEventListener("click", async () => {
   delete btn.dataset.armed;
   btn.textContent = "退出";
   try {
-    await invoke("logout");
+    // 5 秒超时保护：即使 IPC 异常 UI 也不会永久冻结
+    await Promise.race([
+      invoke("logout"),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("退出超时")), 5000)),
+    ]);
     setSelecting(false);
     $("emergency-bar").classList.add("hidden");
     await refreshStatus();
-  } catch (err) { report(err); }
+  } catch (err) { report(err); await refreshStatus(); }
 });
 
 // 详情便签
