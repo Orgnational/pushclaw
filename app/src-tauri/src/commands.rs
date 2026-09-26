@@ -17,7 +17,7 @@ pub struct Status {
 
 #[tauri::command]
 pub fn get_status(state: tauri::State<'_, AppState>) -> Status {
-    let sess = state.session.lock().unwrap().clone();
+    let sess = state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
     Status {
         configured: sess.is_some(),
         email: sess.as_ref().map(|s| s.email.clone()).unwrap_or_default(),
@@ -36,35 +36,22 @@ pub async fn login(
     twofa: Option<String>,
     device_name: String,
 ) -> Result<(), String> {
-    let (user_key, secret) = pushover::login(&email, &password, twofa.as_deref())
-        .await
-        .map_err(|e| e.to_string())?;
-    // 注册响应可能因网络停滞丢失（服务端可能已注册成功）——自动重试一次；
-    // 最坏情况官网出现同名重复设备，可在设备页手动清理
-    let device_id = match pushover::register(&secret, &device_name).await {
-        Ok(id) => id,
-        Err(first) => {
-            eprintln!("[login] 注册响应异常（{first}），重试一次");
-            pushover::register(&secret, &device_name)
-                .await
-                .map_err(|e| format!("注册失败: {first} / 重试仍失败: {e}"))?
-        }
-    };
-    let sess = Session {
-        email,
-        user_key,
-        secret,
-        device_id,
-        device_name,
-    };
+    let sess = crate::pushover::login_and_register(
+        &email, &password, twofa.as_deref(), &device_name,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    eprintln!("[login] ③ 保存会话...");
     store::save_session(&sess).map_err(|e| e.to_string())?;
-    *state.session.lock().unwrap() = Some(sess);
+    *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
+    eprintln!("[login] ④ 通知 ws 线程...");
     let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
-    // 登录成功先立即拉一次队列
+    eprintln!("[login] ⑤ 完成，返回前端");
     let h = app.clone();
     tauri::async_runtime::spawn(async move {
         let _ = pushover::fetch_and_store(h).await;
     });
+    eprintln!("[login] ⑤ 完成，返回前端");
     Ok(())
 }
 
@@ -76,7 +63,7 @@ pub fn history(
     priority: Option<i64>,
     archived: Option<bool>,
 ) -> Vec<Msg> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     store::query(
         &db,
         query.as_deref(),
@@ -89,7 +76,7 @@ pub fn history(
 #[tauri::command]
 pub fn get_message(state: tauri::State<'_, AppState>, id: String) -> Option<Msg> {
     let id = id.parse::<i64>().ok()?;
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     store::get(&db, id)
 }
 
@@ -102,7 +89,7 @@ pub fn delete_messages(
         .iter()
         .map(|s| s.parse::<i64>().map_err(|e| format!("非法 id: {e}")))
         .collect::<Result<Vec<_>, _>>()?;
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     Ok(store::delete_ids(&db, &ids))
 }
 
@@ -116,7 +103,7 @@ pub fn archive_messages(
         .iter()
         .map(|s| s.parse::<i64>().map_err(|e| format!("非法 id: {e}")))
         .collect::<Result<Vec<_>, _>>()?;
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     Ok(store::set_archived(&db, &ids, archived))
 }
 
@@ -126,7 +113,7 @@ pub async fn ack(
     receipt: String,
 ) -> Result<(), String> {
     let secret = {
-        let sess = state.session.lock().unwrap().clone();
+        let sess = state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
         sess.map(|s| s.secret)
             .ok_or_else(|| "尚未登录".to_string())?
     };
@@ -134,7 +121,7 @@ pub async fn ack(
         .await
         .map_err(|e| e.to_string())?;
     {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let _ = db.execute(
             "UPDATE messages SET acked=1 WHERE receipt=?1",
             rusqlite::params![receipt],

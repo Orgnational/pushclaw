@@ -148,12 +148,17 @@ $("login-form").addEventListener("submit", async (e) => {
   errEl.classList.add("hidden");
   btn.disabled = true; btn.textContent = "登录中…";
   try {
-    await invoke("login", {
-      email: $("f-email").value.trim(),
-      password: $("f-password").value,
-      twofa: $("f-twofa").value.trim() || null,
-      deviceName: $("f-device").value.trim(),
-    });
+    // 30s 超时保护：即使 IPC 异常也不会永久卡在登录中
+    await Promise.race([
+      invoke("login", {
+        email: $("f-email").value.trim(),
+        password: $("f-password").value,
+        twofa: $("f-twofa").value.trim() || null,
+        deviceName: $("f-device").value.trim(),
+      }),
+      new Promise((_, rej) => setTimeout(
+        () => rej(new Error("登录超时（30 秒）——请检查网络后重试；若反复出现请重启应用")), 30000)),
+    ]);
     await refreshStatus();
     await loadHistory();
   } catch (err) {

@@ -87,7 +87,8 @@ fn client() -> reqwest::Client {
 /// ws 连接：自解析 IP 直连 + TLS SNI 用真域名 + 在 TLS 流上做 ws 握手。
 async fn dial_ws() -> Result<tokio_tungstenite::WebSocketStream<
     tokio_rustls::client::TlsStream<tokio::net::TcpStream>>> {
-    let addrs = resolve_host(WS_HOST, 443).await?;
+    let host = ws_host();
+    let addrs = resolve_host(host, 443).await?;
     let mut tcp = None;
     for addr in &addrs {
         match tokio::net::TcpStream::connect(addr).await {
@@ -102,12 +103,12 @@ async fn dial_ws() -> Result<tokio_tungstenite::WebSocketStream<
     let cfg = rustls::ClientConfig::builder()
         .with_root_certificates(roots)
         .with_no_client_auth();
-    let sni = rustls::pki_types::ServerName::try_from(WS_HOST.to_string())
+    let sni = rustls::pki_types::ServerName::try_from(host.to_string())
         .map_err(|e| anyhow!("SNI 名称非法: {e}"))?;
     let tls = tokio_rustls::TlsConnector::from(Arc::new(cfg))
         .connect(sni, tcp)
         .await?;
-    let req = WS_URL.into_client_request()?;
+    let req = format!("wss://{}/push", host).into_client_request()?;
     let (ws, _) = tokio_tungstenite::client_async(req, tls).await?;
     Ok(ws)
 }
@@ -122,6 +123,21 @@ pub const MIN_RETRY: i64 = 30;
 pub const MAX_EXPIRE: i64 = 10_800;
 const IMAGE_MIMES: [&str; 5] = ["image/bmp", "image/gif", "image/jpeg", "image/png", "image/tiff"];
 pub const WS_URL: &str = "wss://client.pushover.net/push";
+use std::sync::OnceLock;
+static API_BASE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+pub fn api_base() -> &'static str {
+    API_BASE.get_or_init(|| {
+        std::env::var("PUSHOVER_API_BASE")
+            .unwrap_or_else(|_| "https://api.pushover.net/1".into())
+    })
+}
+static WS_HOST_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+pub fn ws_host() -> &'static str {
+    WS_HOST_OVERRIDE.get_or_init(|| {
+        std::env::var("PUSHOVER_WS_HOST").unwrap_or_else(|_| WS_HOST.into())
+    })
+}
+
 pub const UA: &str = concat!("pushover-toolkit-app/", env!("CARGO_PKG_VERSION"), " (unofficial)");
 
 /// 错误消息里提取服务端 errors 数组。
@@ -147,7 +163,7 @@ pub async fn login(email: &str, password: &str, twofa: Option<&str>) -> Result<(
         form.push(("twofa", t.to_string()));
     }
     let r = client()
-        .post(format!("{API}/users/login.json"))
+        .post(format!("{}/users/login.json", api_base()))
         .form(&form)
         .send()
         .await?;
@@ -168,7 +184,7 @@ pub async fn login(email: &str, password: &str, twofa: Option<&str>) -> Result<(
 /// 注册本机为 Open Client 设备（os=O），返回 device_id。
 pub async fn register(secret: &str, name: &str) -> Result<String> {
     let r = client()
-        .post(format!("{API}/devices.json"))
+        .post(format!("{}/devices.json", api_base()))
         .form(&[
             ("secret", secret),
             ("name", name),
@@ -186,7 +202,7 @@ pub async fn register(secret: &str, name: &str) -> Result<String> {
 
 pub async fn fetch_messages(secret: &str, device_id: &str) -> Result<Vec<Value>> {
     let r = client()
-        .get(format!("{API}/messages.json"))
+        .get(format!("{}/messages.json", api_base()))
         .query(&[("secret", secret), ("device_id", device_id)])
         .send()
         .await?;
@@ -201,7 +217,7 @@ pub async fn fetch_messages(secret: &str, device_id: &str) -> Result<Vec<Value>>
 /// 通知服务端删除本设备队列中 ≤ highest 的消息（本地库已是档案，队列只留未拉取的）。
 pub async fn prune_server(secret: &str, device_id: &str, highest: i64) -> Result<()> {
     let r = client()
-        .post(format!("{API}/devices/{device_id}/update_highest_message.json"))
+        .post(format!("{}/devices/{device_id}/update_highest_message.json", api_base()))
         .form(&[("secret", secret), ("message", &highest.to_string())])
         .send()
         .await?;
@@ -215,7 +231,7 @@ pub async fn prune_server(secret: &str, device_id: &str, highest: i64) -> Result
 
 pub async fn acknowledge(secret: &str, receipt: &str) -> Result<()> {
     let r = client()
-        .post(format!("{API}/receipts/{receipt}/acknowledge.json"))
+        .post(format!("{}/receipts/{receipt}/acknowledge.json", api_base()))
         .form(&[("secret", secret)])
         .send()
         .await?;
@@ -325,7 +341,7 @@ pub async fn send_message(
     }
 
     let r = client()
-        .post(format!("{API}/messages.json"))
+        .post(format!("{}/messages.json", api_base()))
         .multipart(form)
         .send()
         .await?;
@@ -337,12 +353,39 @@ pub async fn send_message(
     }
 }
 
+/// 登录 + 注册设备（含失败自动重试一次），返回完整会话。
+/// GUI 登录命令与测试共用的核心流程。
+pub async fn login_and_register(
+    email: &str,
+    password: &str,
+    twofa: Option<&str>,
+    device_name: &str,
+) -> Result<store::Session> {
+    let (user_key, secret) = login(email, password, twofa).await?;
+    let device_id = match register(&secret, device_name).await {
+        Ok(id) => id,
+        Err(first) => {
+            eprintln!("[login] 注册响应异常（{first}），重试一次");
+            register(&secret, device_name)
+                .await
+                .map_err(|e| anyhow!("注册失败: {first} / 重试仍失败: {e}"))?
+        }
+    };
+    Ok(store::Session {
+        email: email.to_string(),
+        user_key,
+        secret,
+        device_id,
+        device_name: device_name.to_string(),
+    })
+}
+
 /// 校验凭据，返回该账号下的设备名列表。
 pub async fn validate(token: &str, user: &str, device: Option<&str>) -> Result<Vec<String>> {
     let mut form = vec![("token", token.to_string()), ("user", user.to_string())];
     if let Some(d) = device { form.push(("device", d.to_string())); }
     let r = client()
-        .post(format!("{API}/users/validate.json"))
+        .post(format!("{}/users/validate.json", api_base()))
         .form(&form)
         .send()
         .await?;
@@ -359,7 +402,7 @@ pub async fn validate(token: &str, user: &str, device: Option<&str>) -> Result<V
 /// 查询 priority=2 回执的确认状态。
 pub async fn receipt(token: &str, receipt_id: &str) -> Result<Value> {
     let r = client()
-        .get(format!("{API}/receipts/{receipt_id}.json"))
+        .get(format!("{}/receipts/{receipt_id}.json", api_base()))
         .query(&[("token", token)])
         .send()
         .await?;
@@ -390,7 +433,7 @@ fn strip_html(s: &str) -> String {
 pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
     let sess = {
         let st = app.state::<AppState>();
-        let guard = st.session.lock().unwrap();
+        let guard = st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.clone()
     };
     let Some(sess) = sess else { return Ok(0) };
@@ -418,7 +461,7 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
     }
     let new_msgs = {
         let st = app.state::<AppState>();
-        let db = st.db.lock().unwrap();
+        let db = st.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let n = store::insert(&db, &msgs);
         eprintln!("[pushover] 新入库 {} 条", n.len());
         n
@@ -426,7 +469,7 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
     let n = new_msgs.len();
     if let Some(last) = new_msgs.last() {
         let st = app.state::<AppState>();
-        *st.latest_new.lock().unwrap() = Some(last.id);
+        *st.latest_new.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(last.id);
     }
     for m in &new_msgs {
         let _ = app.emit("new-message", m);
@@ -457,14 +500,14 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
 pub async fn re_register(app: &tauri::AppHandle) -> Result<()> {
     let st = app.state::<AppState>();
     let sess = {
-        let guard = st.session.lock().unwrap();
+        let guard = st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.clone()
     };
     let Some(sess) = sess else { return Ok(()) };
     let device_id = register(&sess.secret, &sess.device_name).await?;
     let new_sess = Session { device_id, ..sess };
     store::save_session(&new_sess)?;
-    *st.session.lock().unwrap() = Some(new_sess);
+    *st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(new_sess);
     let _ = st.session_tx.send(*st.session_tx.borrow() + 1);
     eprintln!("[ws] 已同名重新注册设备，使用新 device_id 重连");
     Ok(())
@@ -478,7 +521,7 @@ pub async fn ws_loop(app: tauri::AppHandle) {
         let attempt_start = std::time::Instant::now();
         let sess = {
             let st = app.state::<AppState>();
-            let guard = st.session.lock().unwrap();
+            let guard = st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             guard.clone()
         };
         let Some(sess) = sess else {
@@ -500,7 +543,7 @@ pub async fn ws_loop(app: tauri::AppHandle) {
             // logout 会话清空后：停止重连，等待下一次登录
             {
                 let st = app.state::<AppState>();
-                if st.session.lock().unwrap().is_none() {
+                if st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_none() {
                     eprintln!("[ws] 会话已登出，进入待登录状态");
                     let mut rx = st.session_tx.subscribe();
                     let _ = rx.changed().await;
