@@ -102,6 +102,7 @@ async function loadHistory() {
       return `<div class="m ${pcls} ${state.selecting ? "selectable" : ""} ${sel ? "sel" : ""}"
                    data-id="${m.id}">
         <div class="m-top">${cb}${ico(m)}${flag}<span class="t">${esc(title)}</span>
+          ${m.read ? "" : '<span class="unread-dot" title="未读"></span>'}
           <time>${fmtTime(m.date)}</time></div>
         <pre>${esc(m.message).replace(/\n/g, "<br>")}</pre>
       </div>`;
@@ -152,6 +153,10 @@ function openDetail(m) {
   $("detail-note").dataset.id = m.id;
   $("detail-note").dataset.archived = m.archived ? "1" : "0";
   $("detail-overlay").classList.remove("hidden");
+  // 打开详情即视为已读，并广播其它设备
+  if (!m.read && m.umid) {
+    invoke("mark_read", { umid: m.umid }).catch((err) => report(err));
+  }
 }
 
 function closeDetail() { $("detail-overlay").classList.add("hidden"); }
@@ -330,6 +335,22 @@ $("set-sendtest").addEventListener("click", async () => {
   setTimeout(() => { btn.textContent = "发送测试消息"; btn.disabled = false; }, 3000);
 });
 
+// 全部已读：本地清零 + 广播其它设备
+$("readall-btn").addEventListener("click", async () => {
+  const btn = $("readall-btn");
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "确认全部已读？";
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = "全部已读"; }, 4000);
+    return;
+  }
+  delete btn.dataset.armed;
+  try {
+    await invoke("mark_all_read");
+    await loadHistory();
+  } catch (err) { report(err); }
+});
+
 // 优先级筛选
 $("priority-chips").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
@@ -493,6 +514,7 @@ $("emergency-bar").addEventListener("click", async (e) => {
 });
 
 // Rust 侧事件
+listen("read-sync", async () => { await loadHistory(); });
 listen("new-message", async () => {
   if (state.view === "inbox") await loadHistory();
   refreshEmergencyBar().catch(console.error);

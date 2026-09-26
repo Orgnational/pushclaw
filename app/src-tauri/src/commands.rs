@@ -4,6 +4,7 @@ use crate::pushover;
 use crate::store::{self, Msg, Session};
 use crate::AppState;
 use serde::Serialize;
+use tauri::Emitter;
 use std::sync::atomic::Ordering;
 
 #[derive(Serialize)]
@@ -266,6 +267,33 @@ fn chrono_now() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| format!("(unix {})", d.as_secs()))
         .unwrap_or_default()
+}
+
+/// 标记单条已读（本地 + 广播其它设备）
+#[tauri::command]
+pub async fn mark_read(app: tauri::AppHandle, state: tauri::State<'_, AppState>, umid: String) -> Result<(), String> {
+    {
+        let db = state.db.lock().unwrap_or_else(|p| p.into_inner());
+        store::mark_read_by_umids(&db, &[umid.clone()]);
+    }
+    crate::pushover::broadcast_read_sync(&app, &[umid])
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 全部已读（本地 + 广播其它设备）
+#[tauri::command]
+pub async fn mark_all_read(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let umids = {
+        let db = state.db.lock().unwrap_or_else(|p| p.into_inner());
+        db.execute("UPDATE messages SET read=1 WHERE archived=0 AND read=0", [])
+            .map_err(|e| e.to_string())?;
+        let _ = app.emit("read-sync", Vec::<String>::new());
+        store::unread_umids(&db)
+    };
+    crate::pushover::broadcast_read_sync(&app, &umids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

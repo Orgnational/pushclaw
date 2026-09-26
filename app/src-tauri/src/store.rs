@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS messages (
     acked       INTEGER DEFAULT 0,
     receipt     TEXT,
     archived    INTEGER DEFAULT 0,
-    icon        TEXT
+    icon        TEXT,
+    read        INTEGER DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date);
 "#;
@@ -59,6 +60,7 @@ pub struct Msg {
     pub receipt: String,
     pub archived: bool,
     pub icon: String,
+    pub read: bool,
 }
 
 #[derive(Clone, Serialize, serde::Deserialize)]
@@ -152,6 +154,17 @@ pub fn open(path: &PathBuf) -> rusqlite::Result<Connection> {
     if has_icon == 0 {
         conn.execute_batch("ALTER TABLE messages ADD COLUMN icon TEXT")?;
     }
+    let has_read: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='read'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_read == 0 {
+        // 存量消息默认已读：只对新到消息做未读提醒
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN read INTEGER DEFAULT 1")?;
+    }
     Ok(conn)
 }
 
@@ -208,8 +221,8 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
             .execute(
                 "INSERT OR IGNORE INTO messages
                  (id, umid, title, message, html, priority, sound, url,
-                  url_title, app, aid, date, received_at, acked, receipt, icon)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+                  url_title, app, aid, date, received_at, acked, receipt, icon, read)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
                 rusqlite::params![
                     id,
                     vstr(m, "umid"),
@@ -227,6 +240,7 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
                     vbool1(m, "acked") as i64,
                     vstr(m, "receipt"),
                     vstr(m, "icon"),
+                    0i64,
                 ],
             )
             .unwrap_or(0);
@@ -245,6 +259,7 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
                 acked: vbool1(m, "acked"),
                 receipt: vstr(m, "receipt"),
                 icon: vstr(m, "icon"),
+                read: false,
                 archived: false,
             });
         }
@@ -252,7 +267,7 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
     new_msgs
 }
 
-const MSG_COLS: &str = "id, umid, title, message, html, priority, url, url_title, app, date, acked, receipt, archived, icon";
+const MSG_COLS: &str = "id, umid, title, message, html, priority, url, url_title, app, date, acked, receipt, archived, icon, read";
 
 fn row_to_msg(r: &rusqlite::Row) -> rusqlite::Result<Msg> {
     Ok(Msg {
@@ -270,6 +285,7 @@ fn row_to_msg(r: &rusqlite::Row) -> rusqlite::Result<Msg> {
         receipt: r.get(11)?,
         archived: r.get::<_, i64>(12)? == 1,
         icon: r.get::<_, String>(13).unwrap_or_default(),
+        read: r.get::<_, i64>(14)? == 1,
     })
 }
 
@@ -307,6 +323,42 @@ pub fn query(
 pub fn distinct_apps(conn: &Connection) -> Vec<String> {
     let mut stmt = match conn
         .prepare("SELECT DISTINCT app FROM messages WHERE app != '' ORDER BY app")
+    {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map([], |r| r.get::<_, String>(0))
+        .map(|it| it.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
+}
+
+/// 跨设备已读同步：按 umid 置已读（服务器不存已读态，由各设备本地应用）。
+pub fn mark_read_by_umids(conn: &Connection, umids: &[String]) -> usize {
+    umids.iter()
+        .map(|u| {
+            conn.execute(
+                "UPDATE messages SET read=1 WHERE umid=?1 AND read=0",
+                rusqlite::params![u],
+            )
+            .unwrap_or(0)
+        })
+        .sum()
+}
+
+/// 未读数（列表页脚显示用）。
+pub fn unread_count(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE archived=0 AND read=0",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap_or(0)
+}
+
+/// 未读消息的 umid 列表（广播用）。
+pub fn unread_umids(conn: &Connection) -> Vec<String> {
+    let mut stmt = match conn
+        .prepare("SELECT umid FROM messages WHERE archived=0 AND read=0 AND umid != ''")
     {
         Ok(s) => s,
         Err(_) => return Vec::new(),

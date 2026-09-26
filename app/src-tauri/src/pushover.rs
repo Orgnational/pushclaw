@@ -138,6 +138,8 @@ pub fn ws_host() -> &'static str {
     })
 }
 
+pub const READ_MARKER: &str = "__PUSHCLAW_READ__:";
+
 pub const UA: &str = concat!("pushover-toolkit-app/", env!("CARGO_PKG_VERSION"), " (unofficial)");
 
 /// 错误消息里提取服务端 errors 数组。
@@ -476,10 +478,34 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
             eprintln!("[pushover] 服务端队列已清理至 id={h}");
         }
     }
+    // 分区：已读同步信令 vs 普通消息（信令不入历史库，只应用已读态）
+    let is_sync = |m: &Value| {
+        m.get("message")
+            .and_then(|x| x.as_str())
+            .map(|s| s.starts_with(READ_MARKER))
+            .unwrap_or(false)
+    };
+    let sync_msgs: Vec<Value> = msgs.iter().filter(|m| is_sync(m)).cloned().collect();
+    let normal: Vec<Value> = msgs.iter().filter(|m| !is_sync(m)).cloned().collect();
+    if !sync_msgs.is_empty() {
+        let umids: Vec<String> = sync_msgs
+            .iter()
+            .filter_map(|m| m.get("message").and_then(|x| x.as_str()))
+            .flat_map(|s| s.trim_start_matches(READ_MARKER).split(',').map(String::from))
+            .collect();
+        let applied_n = {
+            let st = app.state::<AppState>();
+            let db = st.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            store::mark_read_by_umids(&db, &umids)
+        };
+        eprintln!("[sync] 收到已读信令 {} 个 umid，本地应用 {} 条", umids.len(), applied_n);
+        let _ = app.emit("read-sync", umids.clone());
+    }
+    let normal_msgs: Vec<Value> = normal;
     let new_msgs = {
         let st = app.state::<AppState>();
         let db = st.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let n = store::insert(&db, &msgs);
+        let n = store::insert(&db, &normal_msgs);
         eprintln!("[pushover] 新入库 {} 条", n.len());
         n
     };
@@ -528,6 +554,29 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
             .show();
     }
     Ok(n)
+}
+
+/// 广播已读信令：静默自消息（priority=-2，TTL 5 分钟），
+/// 其它设备拉取时按 umid 应用已读态。
+pub async fn broadcast_read_sync(app: &tauri::AppHandle, umids: &[String]) -> Result<()> {
+    if umids.is_empty() { return Ok(()); }
+    let (token, user) = {
+        let st = app.state::<AppState>();
+        let guard = st.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        (guard.send_token, guard.send_user)
+    };
+    if token.is_empty() || user.is_empty() {
+        eprintln!("[sync] 无发送凭据，跳过已读广播");
+        return Ok(());
+    }
+    let args = SendArgs {
+        priority: -2,
+        ttl: Some(300),
+        ..Default::default()
+    };
+    let _ = send_message(&token, &user, &format!("{READ_MARKER}{}", umids.join(",")), &args).await?;
+    eprintln!("[sync] 已广播 {} 个已读 umid", umids.len());
+    Ok(())
 }
 
 /// 同名重新注册设备并更新会话：E 帧冷却期的自愈手段（实测立即恢复）。

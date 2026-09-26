@@ -363,3 +363,12 @@ footer {
 .switch-row input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--brand); }
 .set-actions { display: flex; gap: 8px; margin-top: 12px; }
 .set-actions .ghost { padding: 6px 14px; }
+
+/* ---------- 未读/已读态 ---------- */
+.m .unread-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--brand-soft); margin-left: auto; flex: none;
+  box-shadow: 0 0 5px rgba(224, 85, 85, .6);
+}
+.m.read .t { color: var(--muted); font-weight: 500; }
+.m.read pre { color: #6f6a64; }

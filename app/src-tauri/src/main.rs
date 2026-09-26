@@ -33,6 +33,8 @@ fn main() {
             commands::save_settings,
             commands::send_test,
             commands::list_apps,
+            commands::mark_read,
+            commands::mark_all_read,
             commands::get_icon,
             commands::login,
             commands::logout,

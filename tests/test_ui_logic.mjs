@@ -22,12 +22,12 @@ const BIG3 = "1183335762543728908";
 
 const msgs = [
   { id: BIG3, umid: "u3", title: "第三条", message: "m3", html: false, priority: 1,
-    url: "", url_title: "", app: "TestApp", date: 3000, acked: false, receipt: "", archived: false },
+    url: "", url_title: "", app: "TestApp", date: 3000, acked: false, receipt: "", archived: false, read: false },
   { id: BIG2, umid: "u2", title: "第二条", message: "m2", html: false, priority: 0,
-    url: "", url_title: "", app: "TestApp", date: 2000, acked: false, receipt: "", archived: false },
+    url: "", url_title: "", app: "TestApp", date: 2000, acked: false, receipt: "", archived: false, read: true },
   { id: BIG1, umid: "u1", title: "第一条", message: "m1", html: false, priority: 2,
     url: "", url_title: "", app: "TestApp", date: 1000, acked: false,
-    receipt: "rc-1", archived: false },
+    receipt: "rc-1", archived: false, read: false },
 ];
 
 const invokes = [];
