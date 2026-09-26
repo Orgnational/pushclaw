@@ -81,7 +81,13 @@
       </section>
       <section class="set-sec">
         <h3>通知</h3>
-        <label class="switch-row"><input id="set-toast" type="checkbox" /> 收到新消息时弹出系统 Toast</label>
+        <label class="switch-row"><input id="set-sound" type="checkbox" /> 播放提示音（随系统通知）</label>
+        <label class="switch-row"><input id="set-quiet" type="checkbox" /> 免打扰时段（紧急消息仍会提醒）</label>
+        <div class="quiet-row"><input id="set-quiet-start" type="time" value="23:00" /> 至 <input id="set-quiet-end" type="time" value="08:00" /></div>
+      </section>
+      <section class="set-sec">
+        <h3>按应用静音</h3>
+        <div id="muted-list" class="muted small">在消息页出现应用后可配置</div>
       </section>
       <section class="set-sec">
         <h3>发送凭据（测试发送用）</h3>

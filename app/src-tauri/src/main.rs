@@ -32,6 +32,8 @@ fn main() {
             commands::get_settings,
             commands::save_settings,
             commands::send_test,
+            commands::list_apps,
+            commands::get_icon,
             commands::login,
             commands::logout,
             commands::history,

@@ -30,6 +30,32 @@ function report(err) {
 window.addEventListener("unhandledrejection", (e) => report(e.reason));
 window.addEventListener("error", (e) => report(e.message));
 
+const iconCache = {};
+function ico(m) {
+  if (!m.icon) return "";
+  return `<img class="app-ico" data-icon="${esc(m.icon)}" alt="">`;
+}
+
+async function fillIcons() {
+  const need = [...new Set(
+    [...document.querySelectorAll("img.app-ico[data-icon]")]
+      .filter((im) => !im.src.startsWith("data:"))
+      .map((im) => im.dataset.icon))];
+  await Promise.all(need.map(async (name) => {
+    if (iconCache[name]) {
+      applyIcon(name);
+      return;
+    }
+    const url = await invoke("get_icon", { name });
+    if (url) { iconCache[name] = url; applyIcon(name); }
+  }));
+}
+
+function applyIcon(name) {
+  document.querySelectorAll(`img.app-ico[data-icon="${CSS.escape(name)}"]`)
+    .forEach((im) => { im.src = iconCache[name]; });
+}
+
 function esc(s) {
   const div = document.createElement("div");
   div.textContent = s ?? "";
@@ -75,7 +101,7 @@ async function loadHistory() {
       const pcls = m.priority === 2 ? "p2" : m.priority === 1 ? "p1" : "";
       return `<div class="m ${pcls} ${state.selecting ? "selectable" : ""} ${sel ? "sel" : ""}"
                    data-id="${m.id}">
-        <div class="m-top">${cb}${flag}<span class="t">${esc(title)}</span>
+        <div class="m-top">${cb}${ico(m)}${flag}<span class="t">${esc(title)}</span>
           <time>${fmtTime(m.date)}</time></div>
         <pre>${esc(m.message).replace(/\n/g, "<br>")}</pre>
       </div>`;
@@ -83,6 +109,7 @@ async function loadHistory() {
   }
   const scope = state.view === "archive" ? "归档" : "";
   $("count-label").textContent = `${scope}显示 ${msgs.length} 条`;
+  fillIcons().catch(console.error);
   refreshEmergencyBar().catch(console.error);
 }
 
@@ -199,8 +226,24 @@ async function loadSettings() {
   $("set-email").textContent = st.email || "-";
   $("set-version").textContent = "v" + st.version;
   $("set-toast").checked = st.toast;
+  $("set-sound").checked = st.notify_sound;
+  $("set-quiet").checked = st.quiet_enabled;
+  $("set-quiet-start").value = st.quiet_start || "23:00";
+  $("set-quiet-end").value = st.quiet_end || "08:00";
   $("set-token").value = st.send_token;
   $("set-user").value = st.send_user;
+  const muted = new Set(st.muted_apps);
+  const apps = await invoke("list_apps");
+  const box = $("muted-list");
+  if (!apps.length) { box.textContent = "暂无应用记录"; return; }
+  box.innerHTML = apps.map((a) => `
+    <label class="switch-row"><input type="checkbox" data-app="${esc(a)}"
+      ${muted.has(a) ? "checked" : ""} /> 静音 ${esc(a)}</label>`).join("");
+  box.querySelectorAll("input[data-app]").forEach((cb) =>
+    cb.addEventListener("change", async () => {
+      const cur = new Set([...box.querySelectorAll("input[data-app]:checked")].map((c) => c.dataset.app));
+      await invoke("save_settings", { settings: { ...st, muted_apps: [...cur] } });
+    }));
 }
 
 $("set-save").addEventListener("click", async () => {
@@ -211,10 +254,19 @@ $("set-save").addEventListener("click", async () => {
       send_token: $("set-token").value.trim(),
       send_user: $("set-user").value.trim(),
       toast: $("set-toast").checked,
+      notify_sound: $("set-sound").checked,
+      quiet_enabled: $("set-quiet").checked,
+      quiet_start: $("set-quiet-start").value || "23:00",
+      quiet_end: $("set-quiet-end").value || "08:00",
+      muted_apps: [...document.querySelectorAll("#muted-list input[data-app]:checked")].map((c) => c.dataset.app),
     }});
     btn.textContent = "✓ 已保存";
   } catch (err) { report(err); btn.textContent = "保存"; }
   setTimeout(() => { btn.textContent = "保存"; btn.disabled = false; }, 2000);
+});
+
+$("set-quiet").addEventListener("change", () => {
+  $("quiet-row").style.opacity = $("set-quiet").checked ? "1" : "0.4";
 });
 
 $("set-sendtest").addEventListener("click", async () => {

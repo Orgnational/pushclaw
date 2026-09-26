@@ -74,7 +74,7 @@ impl reqwest::dns::Resolve for DoHResolver {
     }
 }
 
-fn client() -> reqwest::Client {
+pub(crate) fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(UA)
         .dns_resolver(Arc::new(DoHResolver))
@@ -471,21 +471,32 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
         let st = app.state::<AppState>();
         *st.latest_new.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(last.id);
     }
+    let (toast_on, muted, quiet) = {
+        let st = app.state::<AppState>();
+        let guard = st.settings.lock().unwrap_or_else(|p| p.into_inner());
+        (guard.toast, guard.muted_apps.clone(),
+         (guard.quiet_enabled, guard.quiet_start.clone(), guard.quiet_end.clone()))
+    };
+    // 免打扰判定：跨午夜区间支持；紧急消息(priority=2)豁免
+    let now_hm = chrono::Local::now().format("%H:%M").to_string();
+    let quiet_now = quiet.0 && !quiet.1.is_empty() && !quiet.2.is_empty()
+        && if quiet.1 <= quiet.2 { now_hm.as_str() >= quiet.1.as_str() && now_hm.as_str() < quiet.2.as_str() }
+           else { now_hm.as_str() >= quiet.1.as_str() || now_hm.as_str() < quiet.2.as_str() };
+    // 事件全量发给前端（列表更新）
     for m in &new_msgs {
         let _ = app.emit("new-message", m);
-        // 官方指南：priority=2 须以醒目方式呈现直至用户手动确认 —— 自动弹出主窗口
+        // 官方指南：priority=2 须醒目呈现 —— 无论通知开关如何都弹出主窗口
         if m.priority == 2 && !m.acked {
             crate::show_main(&app);
         }
     }
-    let toast_on = {
-        let st = app.state::<AppState>();
-        let guard = st.settings.lock().unwrap_or_else(|p| p.into_inner());
-        guard.toast
-    };
-    // 系统通知：只弹新消息，一次最多 3 条防刷屏；设置页可关
-    if !toast_on { return Ok(n); }
-    for m in new_msgs.iter().rev().take(3).rev() {
+    // 系统通知：逐条判定（总开关 / 按应用静音 / 免打扰(紧急豁免)），最多 3 条防刷屏
+    let notify: Vec<_> = new_msgs.iter()
+        .filter(|m| toast_on)
+        .filter(|m| m.app.is_empty() || !muted.iter().any(|a| *a == m.app))
+        .filter(|m| m.priority == 2 || !quiet_now)
+        .collect();
+    for m in notify.iter().rev().take(3).rev() {
         let title = if m.title.is_empty() {
             if m.app.is_empty() { "Pushover".to_string() } else { m.app.clone() }
         } else {

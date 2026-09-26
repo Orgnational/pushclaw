@@ -157,6 +157,11 @@ pub struct AppSettings {
     pub send_token: String,
     pub send_user: String,
     pub toast: bool,
+    pub notify_sound: bool,
+    pub quiet_enabled: bool,
+    pub quiet_start: String,
+    pub quiet_end: String,
+    pub muted_apps: Vec<String>,
     pub version: String,
     pub device_name: String,
 }
@@ -180,6 +185,11 @@ pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
         send_token: token,
         send_user: user,
         toast: st.toast,
+        notify_sound: st.notify_sound,
+        quiet_enabled: st.quiet_enabled,
+        quiet_start: st.quiet_start.clone(),
+        quiet_end: st.quiet_end.clone(),
+        muted_apps: st.muted_apps.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         device_name: state.session.lock().unwrap_or_else(|p| p.into_inner())
             .as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
@@ -195,6 +205,11 @@ pub fn save_settings(
         send_token: settings.send_token,
         send_user: settings.send_user,
         toast: settings.toast,
+        notify_sound: settings.notify_sound,
+        quiet_enabled: settings.quiet_enabled,
+        quiet_start: settings.quiet_start,
+        quiet_end: settings.quiet_end,
+        muted_apps: settings.muted_apps,
     };
     store::save_settings(&st).map_err(|e| e.to_string())?;
     *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st;
@@ -227,6 +242,48 @@ fn chrono_now() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| format!("(unix {})", d.as_secs()))
         .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn list_apps(state: tauri::State<'_, AppState>) -> Vec<String> {
+    let db = state.db.lock().unwrap_or_else(|p| p.into_inner());
+    store::distinct_apps(&db)
+}
+
+/// 应用图标 → data URL（Rust 侧磁盘缓存，官方指南要求缓存图标）
+#[tauri::command]
+pub async fn get_icon(name: String) -> Option<String> {
+    let safe = name.replace('/', "_").replace('\\', "_");
+    let dir = store::data_dir().join("icons");
+    let path = dir.join(format!("{safe}.png"));
+    if !path.exists() {
+        let bytes = crate::pushover::client()
+            .get(&format!("https://api.pushover.net/icons/{safe}.png"))
+            .send()
+            .await
+            .ok()?
+            .bytes()
+            .await
+            .ok()?;
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, &bytes).ok()?;
+    }
+    let bytes = std::fs::read(&path).ok()?;
+    Some(format!("data:image/png;base64,{}", base64_encode(&bytes)))
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for ch in data.chunks(3) {
+        let b = [ch[0], *ch.get(1).unwrap_or(&0), *ch.get(2).unwrap_or(&0)];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if ch.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if ch.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    out
 }
 
 #[tauri::command]

@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS messages (
     received_at INTEGER,
     acked       INTEGER DEFAULT 0,
     receipt     TEXT,
-    archived    INTEGER DEFAULT 0
+    archived    INTEGER DEFAULT 0,
+    icon        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date);
 "#;
@@ -57,6 +58,7 @@ pub struct Msg {
     pub acked: bool,
     pub receipt: String,
     pub archived: bool,
+    pub icon: String,
 }
 
 #[derive(Clone, Serialize, serde::Deserialize)]
@@ -67,11 +69,32 @@ pub struct Settings {
     pub send_user: String,
     #[serde(default = "default_true")]
     pub toast: bool,
+    #[serde(default)]
+    pub notify_sound: bool,
+    /// 免打扰时段（HH:MM）；紧急消息(priority=2)不受限
+    #[serde(default)]
+    pub quiet_enabled: bool,
+    #[serde(default)]
+    pub quiet_start: String,
+    #[serde(default)]
+    pub quiet_end: String,
+    /// 静音的应用名列表（按应用通知设置）
+    #[serde(default)]
+    pub muted_apps: Vec<String>,
 }
 fn default_true() -> bool { true }
 impl Default for Settings {
     fn default() -> Self {
-        Settings { send_token: String::new(), send_user: String::new(), toast: true }
+        Settings {
+            send_token: String::new(),
+            send_user: String::new(),
+            toast: true,
+            notify_sound: false,
+            quiet_enabled: false,
+            quiet_start: String::new(),
+            quiet_end: String::new(),
+            muted_apps: Vec::new(),
+        }
     }
 }
 
@@ -118,6 +141,16 @@ pub fn open(path: &PathBuf) -> rusqlite::Result<Connection> {
         conn.execute_batch(
             "ALTER TABLE messages ADD COLUMN archived INTEGER DEFAULT 0",
         )?;
+    }
+    let has_icon: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='icon'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_icon == 0 {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN icon TEXT")?;
     }
     Ok(conn)
 }
@@ -175,8 +208,8 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
             .execute(
                 "INSERT OR IGNORE INTO messages
                  (id, umid, title, message, html, priority, sound, url,
-                  url_title, app, aid, date, received_at, acked, receipt)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+                  url_title, app, aid, date, received_at, acked, receipt, icon)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
                 rusqlite::params![
                     id,
                     vstr(m, "umid"),
@@ -193,6 +226,7 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
                     now,
                     vbool1(m, "acked") as i64,
                     vstr(m, "receipt"),
+                    vstr(m, "icon"),
                 ],
             )
             .unwrap_or(0);
@@ -210,6 +244,7 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
                 date: vint(m, "date"),
                 acked: vbool1(m, "acked"),
                 receipt: vstr(m, "receipt"),
+                icon: vstr(m, "icon"),
                 archived: false,
             });
         }
@@ -217,7 +252,7 @@ pub fn insert(conn: &Connection, msgs: &[serde_json::Value]) -> Vec<Msg> {
     new_msgs
 }
 
-const MSG_COLS: &str = "id, umid, title, message, html, priority, url, url_title, app, date, acked, receipt, archived";
+const MSG_COLS: &str = "id, umid, title, message, html, priority, url, url_title, app, date, acked, receipt, archived, icon";
 
 fn row_to_msg(r: &rusqlite::Row) -> rusqlite::Result<Msg> {
     Ok(Msg {
@@ -234,6 +269,7 @@ fn row_to_msg(r: &rusqlite::Row) -> rusqlite::Result<Msg> {
         acked: r.get::<_, i64>(10)? == 1,
         receipt: r.get(11)?,
         archived: r.get::<_, i64>(12)? == 1,
+        icon: r.get::<_, String>(13).unwrap_or_default(),
     })
 }
 
@@ -265,6 +301,19 @@ pub fn query(
         Ok(it) => it.filter_map(|r| r.ok()).collect(),
         Err(_) => Vec::new(),
     }
+}
+
+/// 历史中出现过的所有发送应用名（设置页"按应用静音"用）。
+pub fn distinct_apps(conn: &Connection) -> Vec<String> {
+    let mut stmt = match conn
+        .prepare("SELECT DISTINCT app FROM messages WHERE app != '' ORDER BY app")
+    {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map([], |r| r.get::<_, String>(0))
+        .map(|it| it.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
 }
 
 pub fn get(conn: &Connection, id: i64) -> Option<Msg> {
