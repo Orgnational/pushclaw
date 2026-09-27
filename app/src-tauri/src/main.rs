@@ -32,6 +32,8 @@ fn main() {
             commands::get_settings,
             commands::save_settings,
             commands::send_test,
+            commands::send_message,
+            commands::list_devices,
             commands::list_apps,
             commands::mark_read,
             commands::mark_all_read,
