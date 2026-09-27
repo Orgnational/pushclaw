@@ -140,7 +140,6 @@ header {
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
-  overflow-x: auto;   /* 极窄窗口横向滚动，按钮不重叠 */
   border-bottom: 1px solid var(--border-soft);
   background: rgba(23, 20, 20, .85);
   backdrop-filter: blur(10px);
@@ -175,7 +174,17 @@ header {
 .tab:hover { color: var(--text); }
 .tab.active { background: #2e2929; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 
-.header-actions { display: flex; gap: 6px; margin-left: auto; flex: none; }
+.header-actions { display: flex; gap: 4px; margin-left: auto; flex: none; }
+.icon-btn {
+  width: 30px; height: 30px; min-width: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+  background: transparent; border: 1px solid transparent;
+  color: var(--muted); border-radius: var(--radius-sm);
+}
+.icon-btn:hover { background: var(--card-hover); color: var(--text); }
+.icon-btn.active-ghost { border-color: var(--brand); color: var(--brand-soft); }
+.icon-btn svg { display: block; }
 
 /* ---------- 工具栏 ---------- */
 .toolbar {
