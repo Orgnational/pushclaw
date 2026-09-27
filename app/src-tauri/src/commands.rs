@@ -189,6 +189,8 @@ pub struct AppSettings {
     pub version: String,
     #[serde(default)]
     pub device_name: String,
+    #[serde(default)]
+    pub email: String,
 }
 
 #[tauri::command]
@@ -218,6 +220,8 @@ pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
         version: env!("CARGO_PKG_VERSION").to_string(),
         device_name: state.session.lock().unwrap_or_else(|p| p.into_inner())
             .as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
+        email: state.session.lock().unwrap_or_else(|p| p.into_inner())
+            .as_ref().map(|s| s.email.clone()).unwrap_or_default(),
     }
 }
 
