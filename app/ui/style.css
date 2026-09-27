@@ -225,10 +225,11 @@ header {
 @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; } }
 
 /* ---------- 消息卡片 ---------- */
-#list { flex: 1; overflow-y: auto; padding: 10px 16px 16px; }
+#list { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 16px 16px; }
 /* 视图容器统一：与 #list 同等占满（flex:1 拉伸高度，宽度 100%） */
 #send-view, #settings-view {
   flex: 1 1 auto;
+  min-height: 0;           /* flex 子项让 overflow 接管高度的关键 */
   width: 100%;
   box-sizing: border-box;
   overflow-y: auto;
@@ -295,6 +296,7 @@ footer {
   border-top: 1px solid var(--border-soft);
   color: var(--muted); font-size: 12px;
   min-height: 32px;
+  flex: none;              /* 固定在底部，不随内容滚动/压缩 */
 }
 
 /* ---------- 便签式详情 ---------- */
