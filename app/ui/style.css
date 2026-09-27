@@ -185,6 +185,14 @@ header {
 .icon-btn:hover { background: var(--card-hover); color: var(--text); }
 .icon-btn.active-ghost { border-color: var(--brand); color: var(--brand-soft); }
 .icon-btn svg { display: block; }
+.icon-btn.armed { color: var(--urgent); border-color: var(--urgent); background: rgba(224, 85, 85, .08); }
+.icon-btn.armed::after {
+  content: "?"; position: absolute; top: -4px; right: -4px;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--urgent); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.icon-btn { position: relative; }
 
 /* ---------- 工具栏 ---------- */
 .toolbar {

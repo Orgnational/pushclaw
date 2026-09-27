@@ -339,12 +339,22 @@ $("set-sendtest").addEventListener("click", async () => {
 $("readall-btn").addEventListener("click", async () => {
   const btn = $("readall-btn");
   if (btn.dataset.armed !== "1") {
+    // 图标按钮：确认态用红色警示 + title 提示，不塞长文字
     btn.dataset.armed = "1";
-    btn.textContent = "确认全部已读？";
-    setTimeout(() => { delete btn.dataset.armed; btn.textContent = "全部已读"; }, 4000);
+    btn.classList.add("armed");
+    btn.title = "再点一次确认全部已读";
+    setTimeout(() => {
+      if (btn.dataset.armed === "1") {
+        delete btn.dataset.armed;
+        btn.classList.remove("armed");
+        btn.title = "全部标记为已读";
+      }
+    }, 4000);
     return;
   }
   delete btn.dataset.armed;
+  btn.classList.remove("armed");
+  btn.title = "全部标记为已读";
   try {
     await invoke("mark_all_read");
     await loadHistory();
@@ -433,12 +443,20 @@ $("logout-btn").addEventListener("click", async () => {
   const btn = $("logout-btn");
   if (btn.dataset.armed !== "1") {
     btn.dataset.armed = "1";
-    btn.textContent = "确认退出？";
-    setTimeout(() => { delete btn.dataset.armed; btn.textContent = "退出"; }, 4000);
+    btn.classList.add("armed");
+    btn.title = "再点一次确认退出登录";
+    setTimeout(() => {
+      if (btn.dataset.armed === "1") {
+        delete btn.dataset.armed;
+        btn.classList.remove("armed");
+        btn.title = "退出登录";
+      }
+    }, 4000);
     return;
   }
   delete btn.dataset.armed;
-  btn.textContent = "退出";
+  btn.classList.remove("armed");
+  btn.title = "退出登录";
   try {
     // 5 秒超时保护：即使 IPC 异常 UI 也不会永久冻结
     await Promise.race([
