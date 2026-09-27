@@ -75,6 +75,9 @@ button {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;      /* 文字固定横排，不换行 */
+  flex: none;               /* flex 容器内不被压缩 */
+  min-width: fit-content;
   transition: background .15s, border-color .15s, transform .1s, color .15s;
 }
 button:active { transform: scale(.97); }
@@ -137,6 +140,7 @@ header {
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
+  overflow-x: auto;   /* 极窄窗口横向滚动，按钮不重叠 */
   border-bottom: 1px solid var(--border-soft);
   background: rgba(23, 20, 20, .85);
   backdrop-filter: blur(10px);
@@ -171,7 +175,7 @@ header {
 .tab:hover { color: var(--text); }
 .tab.active { background: #2e2929; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 
-.header-actions { display: flex; gap: 6px; margin-left: auto; }
+.header-actions { display: flex; gap: 6px; margin-left: auto; flex: none; }
 
 /* ---------- 工具栏 ---------- */
 .toolbar {
@@ -199,8 +203,8 @@ header {
   animation: slideDown .18s ease;
 }
 #batch-bar.hidden { display: none; }
-.batch-actions { display: flex; gap: 6px; }
-.batch-actions button { padding: 4px 12px; font-size: 12px; }
+.batch-actions { display: flex; gap: 6px; flex: none; }
+.batch-actions button { padding: 4px 12px; font-size: 12px; min-width: 72px; }
 @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; } }
 
 /* ---------- 消息卡片 ---------- */
@@ -315,6 +319,7 @@ footer {
   color: #8a7f68; font-size: 12px;
 }
 #detail-actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+#detail-actions button, #detail-actions a { white-space: nowrap; min-width: fit-content; flex: none; }
 #detail-actions button, #detail-actions a { padding: 6px 14px; font-size: 13px; border-radius: 6px; }
 #detail-actions .ghost { background: transparent; border: 1px solid #cbb98d; color: #6b6250; }
 #detail-actions .ghost:hover { background: rgba(0, 0, 0, .05); color: #3a3226; }
