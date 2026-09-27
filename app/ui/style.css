@@ -125,7 +125,7 @@ button:active { transform: scale(.97); }
 .brand p { margin: 0; line-height: 1.55; }
 label { display: block; margin: 13px 0 4px; font-size: 12.5px; color: var(--muted); }
 #login-btn {
-  width: 100%; margin-top: 20px; padding: 11px;
+  width: 100%; margin-top: 20px; padding: 11px; min-height: 40px;
   background: var(--brand); color: #fff;
   font-size: 14px; font-weight: 600; border-radius: 10px;
 }
@@ -337,7 +337,7 @@ footer {
 }
 #detail-actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
 #detail-actions button, #detail-actions a { white-space: nowrap; min-width: fit-content; flex: none; }
-#detail-actions button, #detail-actions a { padding: 6px 14px; font-size: 13px; border-radius: 6px; }
+#detail-actions button, #detail-actions a { padding: 6px 14px; font-size: 13px; border-radius: 6px; white-space: nowrap; min-width: fit-content; }
 #detail-actions .ghost { background: transparent; border: 1px solid #cbb98d; color: #6b6250; }
 #detail-actions .ghost:hover { background: rgba(0, 0, 0, .05); color: #3a3226; }
 #detail-actions .danger, #detail-actions .urgent-btn { background: #c0392b; color: #fff; }
@@ -384,6 +384,8 @@ footer {
 .switch-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
 .switch-row input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--brand); }
 .set-actions { display: flex; gap: 8px; margin-top: 12px; }
+.set-actions button { min-width: 96px; text-align: center; }
+#snd-send { min-width: 84px; text-align: center; }
 .set-actions .ghost { padding: 6px 14px; }
 
 /* ---------- 未读/已读态 ---------- */

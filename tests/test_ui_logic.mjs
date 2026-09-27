@@ -61,6 +61,20 @@ window.__TAURI__ = {
         }
         case "ack": return;
         case "sync_now": return 0;
+        case "get_settings": return {
+          send_token: "", send_user: "", toast: true, notify_sound: false,
+          quiet_enabled: false, quiet_start: "23:00", quiet_end: "08:00",
+          muted_apps: [], version: "test", device_name: "test",
+        };
+        case "save_settings": return;
+        case "list_apps": return ["TestApp"];
+        case "get_icon": return "data:image/png;base64,x";
+        case "list_devices": return ["dev-1"];
+        case "mark_read": return;
+        case "mark_all_read": return;
+        case "send_message": return "req-mock";
+        case "logout": return;
+        case "open_url": return;
         default: return null;
       }
     },

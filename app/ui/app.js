@@ -124,7 +124,8 @@ function setSelecting(on) {
   state.selecting = on;
   state.selected.clear();
   state.deleteArmed = false;
-  $("select-btn").textContent = on ? "退出选择" : "选择";
+  const selectBtn = $("select-btn");
+  if (selectBtn) selectBtn.title = on ? "退出多选模式" : "多选/批量操作";
   $("select-btn").classList.toggle("active-ghost", on);
   refreshBatchBar();
   loadHistory();
