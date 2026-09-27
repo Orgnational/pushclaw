@@ -2,6 +2,8 @@
 
 > 基于 [Pushover Open Client API](https://pushover.net/api/client) 的**非官方**桌面推送客户端 + CLI 收发工具箱。
 > 应用名遵循官方命名规范（第三方客户端不得使用 "Pushover"）；本项目与 Pushover 官方无关，也未获其支持。
+>
+> 🤖 **本项目 100% 由 AI 开发**——架构设计、编码、测试、CI/CD 与发布全流程由 AI agent（ZCode + GLM）完成，人类负责需求定义、方向决策与验收。
 
 ![release](https://img.shields.io/badge/release-v0.8.0-blue) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey) ![desktop deps](https://img.shields.io/badge/desktop%20deps-rust%20%2B%20系统WebView-success) ![cli](https://img.shields.io/badge/CLI-Rust%20%28clap%29-informational)
 

@@ -28,3 +28,11 @@ main                ← 始终可发布；只接受经过验证的合并
 - 分支命名：`feat/send-drafts`、`fix/login-timeout`、`test/icon-regression`
 - 一个分支一件事；混合改动拆多个分支
 - tag 版本号与 app/src-tauri/tauri.conf.json 对齐（CI 会自动同步）
+
+## 关于 AI 开发
+
+本仓库全部代码由 AI agent 编写。若你想贡献：
+
+- 人类贡献同样欢迎，走相同的分支/验证流程
+- 提交信息会标注生成方式（AI 直产 / 人工）
+- 对 AI 生成代码的质疑/修正是高价值贡献
