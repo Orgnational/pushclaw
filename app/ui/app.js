@@ -32,22 +32,21 @@ window.addEventListener("error", (e) => report(e.message));
 
 const iconCache = {};
 function ico(m) {
-  if (!m.icon) return "";
-  return `<img class="app-ico" data-icon="${esc(m.icon)}" alt="">`;
+  if (!m.icon || !iconCache[m.icon]) return "";   // 缓存命中才渲染 img（防空 src 重载风暴/布局抖动）
+  return `<img class="app-ico" data-icon="${esc(m.icon)}" src="${iconCache[m.icon]}" alt="">`;
 }
 
+const failedIcons = new Set();
 async function fillIcons() {
   const need = [...new Set(
     [...document.querySelectorAll("img.app-ico[data-icon]")]
-      .filter((im) => !im.src.startsWith("data:"))
-      .map((im) => im.dataset.icon))];
+      .filter((im) => !iconCache[im.dataset.icon])
+      .map((im) => im.dataset.icon))]
+    .filter((name) => !failedIcons.has(name));
   await Promise.all(need.map(async (name) => {
-    if (iconCache[name]) {
-      applyIcon(name);
-      return;
-    }
     const url = await invoke("get_icon", { name });
     if (url) { iconCache[name] = url; applyIcon(name); }
+    else { failedIcons.add(name); }   // 下载失败的图标本会话不再重试（防布局抖动循环）
   }));
 }
 
