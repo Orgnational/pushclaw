@@ -18,6 +18,13 @@ fn main() {
     let (tx, _rx) = tokio::sync::watch::channel(0u64);
 
     tauri::Builder::default()
+        // 单实例强制：二次启动时把已有窗口带到前台（防多开抢设备会话）
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .manage(AppState {
             db: Mutex::new(conn),

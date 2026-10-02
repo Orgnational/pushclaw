@@ -18,16 +18,16 @@ pub struct Status {
 }
 
 #[tauri::command]
-pub fn get_status(state: tauri::State<'_, AppState>) -> Status {
+pub async fn get_status(state: tauri::State<'_, AppState>) -> Result<Status, String> {
     let sess = state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
-    Status {
+    Ok(Status {
         configured: sess.is_some(),
         email: sess.as_ref().map(|s| s.email.clone()).unwrap_or_default(),
         device_name: sess.as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
         connected: state.connected.load(Ordering::Relaxed),
         db_path: store::db_path().display().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-    }
+    })
 }
 
 #[tauri::command]
@@ -62,7 +62,6 @@ pub async fn login(
     *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
     eprintln!("[login] ④ 通知 ws 线程...");
     let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
-    eprintln!("[login] ⑤ 完成，返回前端");
     let h = app.clone();
     tauri::async_runtime::spawn(async move {
         let _ = pushover::fetch_and_store(h).await;
@@ -72,32 +71,34 @@ pub async fn login(
 }
 
 #[tauri::command]
-pub fn history(
+pub async fn history(
     state: tauri::State<'_, AppState>,
     query: Option<String>,
     limit: Option<i64>,
     priority: Option<i64>,
     archived: Option<bool>,
-) -> Vec<Msg> {
+) -> Result<Vec<Msg>, String> {
     let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    store::query(
+    Ok(store::query(
         &db,
         query.as_deref(),
         limit.unwrap_or(200),
         priority,
         archived.unwrap_or(false),
-    )
+    ))
 }
 
 #[tauri::command]
-pub fn get_message(state: tauri::State<'_, AppState>, id: String) -> Option<Msg> {
-    let id = id.parse::<i64>().ok()?;
+pub async fn get_message(state: tauri::State<'_, AppState>, id: String) -> Result<Option<Msg>, String> {
+    let Ok(id) = id.parse::<i64>() else {
+        return Err("非法消息 id".into());
+    };
     let db = state.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    store::get(&db, id)
+    Ok(store::get(&db, id))
 }
 
 #[tauri::command]
-pub fn delete_messages(
+pub async fn delete_messages(
     state: tauri::State<'_, AppState>,
     ids: Vec<String>,
 ) -> Result<usize, String> {
@@ -110,7 +111,7 @@ pub fn delete_messages(
 }
 
 #[tauri::command]
-pub fn archive_messages(
+pub async fn archive_messages(
     state: tauri::State<'_, AppState>,
     ids: Vec<String>,
     archived: bool,
@@ -194,7 +195,7 @@ pub struct AppSettings {
 }
 
 #[tauri::command]
-pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
+pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<AppSettings, String> {
     let st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
     // 发送凭据缺省时，尝试从 CLI 配置文件带出（用户已在 CLI 配置过则零输入）
     let (mut token, mut user) = (st.send_token.clone(), st.send_user.clone());
@@ -208,7 +209,7 @@ pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
             }
         }
     }
-    AppSettings {
+    Ok(AppSettings {
         send_token: token,
         send_user: user,
         toast: st.toast,
@@ -222,11 +223,11 @@ pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
             .as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
         email: state.session.lock().unwrap_or_else(|p| p.into_inner())
             .as_ref().map(|s| s.email.clone()).unwrap_or_default(),
-    }
+    })
 }
 
 #[tauri::command]
-pub fn save_settings(
+pub async fn save_settings(
     state: tauri::State<'_, AppState>,
     settings: AppSettings,
 ) -> Result<(), String> {
@@ -301,9 +302,9 @@ pub async fn mark_all_read(app: tauri::AppHandle, state: tauri::State<'_, AppSta
 }
 
 #[tauri::command]
-pub fn list_apps(state: tauri::State<'_, AppState>) -> Vec<String> {
+pub async fn list_apps(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     let db = state.db.lock().unwrap_or_else(|p| p.into_inner());
-    store::distinct_apps(&db)
+    Ok(store::distinct_apps(&db))
 }
 
 /// 应用图标 → data URL（Rust 侧磁盘缓存，官方指南要求缓存图标）
