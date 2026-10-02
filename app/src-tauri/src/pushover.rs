@@ -169,17 +169,19 @@ pub async fn login(email: &str, password: &str, twofa: Option<&str>) -> Result<(
         .form(&form)
         .send()
         .await?;
-    let code = r.status().as_u16();
+    let status = r.status();
     let body: Value = r.json().await?;
     if body.get("status").and_then(|s| s.as_i64()) == Some(1) {
         Ok((
             body["id"].as_str().unwrap_or_default().to_string(),
             body["secret"].as_str().unwrap_or_default().to_string(),
         ))
-    } else if code == 412 {
+    } else if status == reqwest::StatusCode::PRECONDITION_FAILED {
         bail!("2fa_required")
+    } else if status.is_client_error() {
+        bail!("REJECTED: 登录失败: {}", api_errors(&body))
     } else {
-        bail!("登录失败: {}", api_errors(&body))
+        bail!("RETRYABLE: 登录失败: {}", api_errors(&body))
     }
 }
 
@@ -198,13 +200,17 @@ pub async fn register(secret: &str, name: &str) -> Result<String> {
         .await
         .inspect_err(|e| eprintln!("[http] register 响应未到达（{}ms）: {e}",
             t0.elapsed().as_millis()))?;
+    let status = r.status();
     eprintln!("[http] register 响应到达（{}ms, {}）",
-        t0.elapsed().as_millis(), r.status());
+        t0.elapsed().as_millis(), status);
     let body: Value = r.json().await?;
-    if body.get("status").and_then(|s| s.as_i64()) == Some(1) {
+    if body.get("status").and_then(|st| st.as_i64()) == Some(1) {
         Ok(body["id"].as_str().unwrap_or_default().to_string())
+    } else if status.is_client_error() {
+        // 官方指南：服务端错误应直接呈现给用户，不做无意义的自动重试
+        bail!("REJECTED: {}", api_errors(&body))
     } else {
-        bail!("注册失败: {}", api_errors(&body))
+        bail!("RETRYABLE: {}", api_errors(&body))
     }
 }
 
@@ -404,6 +410,10 @@ pub async fn login_and_register(
             }
             Err(e) => {
                 let msg = e.to_string();
+                // 官方指南：服务端明确拒绝（名称非法等）应立即呈现，不重试
+                if msg.starts_with("REJECTED:") {
+                    return Err(anyhow!("{}", msg.trim_start_matches("REJECTED: ")));
+                }
                 last_err = Some(anyhow!("{msg}"));
                 eprintln!("[login] 注册第 {attempt} 次失败: {msg}");
                 if gap > 0 {
