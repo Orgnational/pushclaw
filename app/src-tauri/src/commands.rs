@@ -59,6 +59,7 @@ pub async fn login(
         *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st;
         eprintln!("[login] 发送凭据已保存");
     }
+    let device_name_for_event = sess.device_name.clone();
     *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
     eprintln!("[login] ④ 通知 ws 线程...");
     let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
@@ -67,6 +68,8 @@ pub async fn login(
         let _ = pushover::fetch_and_store(h).await;
     });
     eprintln!("[login] ⑤ 完成，返回前端");
+    // 双保险：invoke 返回链路异常时，事件仍能驱动前端切换视图
+    let _ = app.emit("login-success", device_name_for_event);
     Ok(())
 }
 

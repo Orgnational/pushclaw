@@ -535,6 +535,13 @@ $("emergency-bar").addEventListener("click", async (e) => {
 });
 
 // Rust 侧事件
+// 双保险：登录命令返回链路异常时，Rust 侧主动推送的事件也能切换视图
+listen("login-success", async () => {
+  $("login-view").classList.add("hidden");
+  $("main-view").classList.remove("hidden");
+  await refreshStatus();
+  await loadHistory();
+});
 listen("read-sync", async () => { await loadHistory(); });
 listen("new-message", async () => {
   if (state.view === "inbox") await loadHistory();
