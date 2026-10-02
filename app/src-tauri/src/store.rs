@@ -130,6 +130,7 @@ pub fn open(path: &PathBuf) -> rusqlite::Result<Connection> {
         let _ = std::fs::create_dir_all(parent);
     }
     let conn = Connection::open(path)?;
+    conn.busy_timeout(std::time::Duration::from_millis(5000))?;
     conn.execute_batch(SCHEMA)?;
     // 老库迁移：补 archived 列
     let has_archived: i64 = conn
