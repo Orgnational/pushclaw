@@ -440,6 +440,8 @@ $("sync-btn").addEventListener("click", async () => {
 
 // 退出登录（两步确认）：清本地会话回到登录页；云端设备需到官网设备页删除
 $("logout-btn").addEventListener("click", async () => {
+  document.title = "CLICKED:" + new Date().toISOString().slice(11, 19);
+  console.log("[logout] 点击，armed =", $("logout-btn").dataset.armed ?? "0");
   const btn = $("logout-btn");
   if (btn.dataset.armed !== "1") {
     btn.dataset.armed = "1";
@@ -458,6 +460,7 @@ $("logout-btn").addEventListener("click", async () => {
   btn.classList.remove("armed");
   btn.title = "退出登录";
   try {
+    console.log("[logout] 确认态，调用 logout 命令");
     // 5 秒超时保护：即使 IPC 异常 UI 也不会永久冻结
     await Promise.race([
       invoke("logout"),

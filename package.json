@@ -1,0 +1,7 @@
+{
+  "name": "pushclaw-workspace",
+  "private": true,
+  "devDependencies": {
+    "jsdom": "^24"
+  }
+}

@@ -50,9 +50,15 @@ fn b64_decode(s: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn send_message_reaches_mock_with_attachment() {
-    std::env::set_var("PUSHOVER_API_BASE", "http://127.0.0.1:18101/1");
+    let port = {
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let p = l.local_addr().unwrap().port();
+        drop(l);
+        p
+    };
+    std::env::set_var("PUSHOVER_API_BASE", format!("http://127.0.0.1:{port}/1"));
     let hits = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    spawn_mock(18101, hits.clone());
+    spawn_mock(port, hits.clone());
 
     // 模拟 GUI 传来的 base64 附件（PNG 魔数 + 数据）
     let image_bytes = vec![0x89u8, b'P', b'N', b'G', 1, 2, 3, 4, 5, 6, 7, 8];

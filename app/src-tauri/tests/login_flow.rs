@@ -39,8 +39,15 @@ fn spawn_mock(port: u16) {
 #[tokio::test]
 async fn login_and_register_completes() {
     // API 基址是 OnceLock：必须在首次调用前设置
-    std::env::set_var("PUSHOVER_API_BASE", "http://127.0.0.1:18100/1");
-    spawn_mock(18100);
+    // 动态端口：并行测试时避免 bind 冲突
+    let port = {
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let p = l.local_addr().unwrap().port();
+        drop(l);
+        p
+    };
+    std::env::set_var("PUSHOVER_API_BASE", format!("http://127.0.0.1:{port}/1"));
+    spawn_mock(port);
 
     let fut = pushclaw_core::pushover::login_and_register(
         "tester@example.com",
