@@ -185,6 +185,8 @@ pub async fn login(email: &str, password: &str, twofa: Option<&str>) -> Result<(
 
 /// 注册本机为 Open Client 设备（os=O），返回 device_id。
 pub async fn register(secret: &str, name: &str) -> Result<String> {
+    let t0 = std::time::Instant::now();
+    eprintln!("[http] POST devices.json → 发出");
     let r = client()
         .post(format!("{}/devices.json", api_base()))
         .form(&[
@@ -193,7 +195,11 @@ pub async fn register(secret: &str, name: &str) -> Result<String> {
             ("os", "O"),
         ])
         .send()
-        .await?;
+        .await
+        .inspect_err(|e| eprintln!("[http] register 响应未到达（{}ms）: {e}",
+            t0.elapsed().as_millis()))?;
+    eprintln!("[http] register 响应到达（{}ms, {}）",
+        t0.elapsed().as_millis(), r.status());
     let body: Value = r.json().await?;
     if body.get("status").and_then(|s| s.as_i64()) == Some(1) {
         Ok(body["id"].as_str().unwrap_or_default().to_string())
@@ -381,15 +387,38 @@ pub async fn login_and_register(
     device_name: &str,
 ) -> Result<store::Session> {
     let (user_key, secret) = login(email, password, twofa).await?;
-    let device_id = match register(&secret, device_name).await {
-        Ok(id) => id,
-        Err(first) => {
-            eprintln!("[login] 注册响应异常（{first}），重试一次");
-            register(&secret, device_name)
-                .await
-                .map_err(|e| anyhow!("注册失败: {first} / 重试仍失败: {e}"))?
+
+    // 注册带退避重试（网络停滞/响应丢失时服务端往往已注册成功——
+    // 同名重注册会产生重复设备，但保证客户端拿到可用 device_id；
+    // 重复条目可在官网设备页清理，比让用户永远卡在登录界面对）
+    let mut device_id = String::new();
+    let mut last_err = None::<anyhow::Error>;
+    for (attempt, gap) in [(1, 0u64), (2, 3), (3, 8), (4, 15)] {
+        match register(&secret, device_name).await {
+            Ok(id) => {
+                device_id = id;
+                if attempt > 1 {
+                    eprintln!("[login] 注册成功（第 {attempt} 次尝试）");
+                }
+                break;
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                last_err = Some(anyhow!("{msg}"));
+                eprintln!("[login] 注册第 {attempt} 次失败: {msg}");
+                if gap > 0 {
+                    tokio::time::sleep(std::time::Duration::from_secs(gap)).await;
+                }
+            }
         }
-    };
+    }
+    if device_id.is_empty() {
+        bail!(
+            "设备注册失败（已重试 4 次）: {} —— 请检查网络后重试；若提示设备名已存在，说明此前已注册成功，可直接重启应用继续",
+            last_err.map(|e| e.to_string()).unwrap_or_default()
+        );
+    }
+
     Ok(store::Session {
         email: email.to_string(),
         user_key,
