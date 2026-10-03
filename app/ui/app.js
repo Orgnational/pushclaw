@@ -88,7 +88,6 @@ async function loadHistory() {
     list.innerHTML = `<div class="empty">
       <svg class="claw" viewBox="0 0 24 24"><g fill="currentColor"><path d="M5 3.2 C5.9 6 6.6 10.5 6.2 15.5 C6 18 5.4 20 4.9 20.8 C4.3 19.6 3.6 16.5 3.7 12.6 C3.8 8.6 4.4 5.2 5 3.2 Z"/><path d="M12 2 C13.1 5.4 13.9 10.6 13.5 16.4 C13.3 19.4 12.6 21.8 12 22.8 C11.3 21.4 10.5 17.7 10.6 13.2 C10.7 8.5 11.4 4.5 12 2 Z"/><path d="M19 3.2 C19.6 5.2 20.2 8.6 20.3 12.6 C20.4 16.5 19.7 19.6 19.1 20.8 C18.6 20 17.9 18 17.8 15.5 C17.4 10.5 18.1 6 19 3.2 Z"/></g></svg>
       <p>${state.view === "archive" ? "归档是空的" : "还没有消息"}</p>
-      <p class="small">${state.view === "archive" ? "在消息页选中后归档的内容会出现在这里" : "从发送端 po-send 发一条试试"}</p>
     </div>`;
   } else {
     list.innerHTML = msgs.map((m) => {
@@ -147,7 +146,7 @@ function openDetail(m) {
   else { url.classList.add("hidden"); }
   const ack = $("detail-ack");
   if (m.priority === 2 && m.receipt && !m.acked) {
-    ack.classList.remove("hidden"); ack.disabled = false; ack.textContent = "确认（全设备静默）";
+    ack.classList.remove("hidden"); ack.disabled = false; ack.textContent = "确认";
   } else { ack.classList.add("hidden"); }
   $("detail-archive").textContent = m.archived ? "恢复到消息" : "归档";
   $("detail-note").dataset.id = m.id;
@@ -180,7 +179,7 @@ $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = $("login-btn"), errEl = $("login-error");
   errEl.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "登录中…（弱网最长约 2 分钟）";
+  btn.disabled = true; btn.textContent = "登录中…";
   document.title = "PC:[1]invoke已发出";
   try {
     // 不设 UI 超时：Rust 侧每请求 30s 超时 × 有界重试，invoke 必然返回。
@@ -205,7 +204,7 @@ $("login-form").addEventListener("submit", async (e) => {
     await refreshStatus();
   } finally {
     document.title = "PC:[4]按钮恢复";
-    btn.disabled = false; btn.textContent = "登录并注册本机";
+    btn.disabled = false; btn.textContent = "登录";
   }
 });
 
