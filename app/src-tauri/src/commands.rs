@@ -15,11 +15,15 @@ pub struct Status {
     pub connected: bool,
     pub db_path: String,
     pub version: String,
+    pub device_registered: bool,
 }
 
 #[tauri::command]
 pub async fn get_status(state: tauri::State<'_, AppState>) -> Result<Status, String> {
     let sess = state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+    let device_registered = sess.as_ref()
+        .map(|s| !s.device_id.is_empty())
+        .unwrap_or(false);
     Ok(Status {
         configured: sess.is_some(),
         email: sess.as_ref().map(|s| s.email.clone()).unwrap_or_default(),
@@ -27,6 +31,7 @@ pub async fn get_status(state: tauri::State<'_, AppState>) -> Result<Status, Str
         connected: state.connected.load(Ordering::Relaxed),
         db_path: store::db_path().display().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        device_registered,
     })
 }
 

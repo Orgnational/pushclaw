@@ -41,7 +41,7 @@ window.__TAURI__ = {
     invoke: async (cmd, args) => {
       invokes.push([cmd, args]);
       switch (cmd) {
-        case "get_status": return { configured: true, email: "t@t", device_name: "test", connected: true, db_path: "/x" };
+        case "get_status": return { configured: true, email: "t@t", device_name: "test", connected: true, db_path: "/x", device_registered: true };
         case "history": {
           const q = args?.query ?? null;
           const archived = args?.archived ?? false;

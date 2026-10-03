@@ -167,8 +167,10 @@ async function refreshStatus() {
   $("conn-dot").className = "dot " + (st.connected ? "on" : "off");
   $("device-label").textContent = st.configured
     ? `${st.device_name} · ${st.email}` : "未登录";
-  loginView.classList.toggle("hidden", st.configured);
-  mainView.classList.toggle("hidden", !st.configured);
+  // configured=已登录；device_registered=设备已注册（两者齐才进主视图）
+  const showMain = st.configured && (st.device_registered ?? true);
+  loginView.classList.toggle("hidden", showMain);
+  mainView.classList.toggle("hidden", !showMain);
   return st;
 }
 
@@ -191,13 +193,15 @@ $("login-form").addEventListener("submit", async (e) => {
         () => rej(new Error("登录超时（30 秒）——请检查网络后重试")), 30000)),
     ]);
     // 第二步：注册设备（独立命令，失败不影响登录态，可单独重试）
+    let registered = false;
     try {
       await invoke("register_device", { deviceName: $("f-device").value.trim() });
+      registered = true;
     } catch (regErr) {
-      errEl.textContent = "登录成功，但设备注册失败：" + regErr + "（可在设置页重试）";
+      errEl.textContent = "登录成功，但设备注册失败：" + regErr + "（可修正设备名后重试）";
       errEl.classList.remove("hidden");
       btn.disabled = false; btn.textContent = "重试注册设备";
-      return;
+      return;   // 停在登录页：设备没注册成功就不进主界面（避免半配置状态）
     }
     await refreshStatus();
     await loadHistory();
