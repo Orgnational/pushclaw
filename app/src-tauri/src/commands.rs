@@ -80,7 +80,10 @@ pub async fn login(
     let device_name_for_event = sess.device_name.clone();
     *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
     eprintln!("[login] ④ 通知 ws 线程...");
-    let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
+    // 拆开求值顺序：写成 send(*borrow() + 1) 时 borrow 的读锁守卫存活到语句末，
+    // send 内部取写锁 → 同线程读/写锁自死锁（登录回执永不返回的根因）
+    let ver = *state.session_tx.borrow() + 1;
+    let _ = state.session_tx.send(ver);
     eprintln!("[login] ⑤ 完成，返回前端");
     // 双保险：invoke 返回链路异常时，事件仍能驱动前端切换视图
     let _ = app.emit("login-success", device_name_for_event);
@@ -178,6 +181,7 @@ pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
+    // 同 login：borrow 守卫必须先释放再 send，否则同线程读写锁自死锁
     let ver = { *state.session_tx.borrow() + 1 };
     let _ = state.session_tx.send(ver);
     eprintln!("[logout] 完成（会话版本 {ver}）");

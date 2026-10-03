@@ -657,7 +657,9 @@ pub async fn re_register(app: &tauri::AppHandle) -> Result<()> {
     let new_sess = Session { device_id, ..sess };
     store::save_session(&new_sess)?;
     *st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(new_sess);
-    let _ = st.session_tx.send(*st.session_tx.borrow() + 1);
+    // 同 login：borrow 守卫必须先释放再 send，否则同线程读写锁自死锁
+    let ver = *st.session_tx.borrow() + 1;
+    let _ = st.session_tx.send(ver);
     eprintln!("[ws] 已同名重新注册设备，使用新 device_id 重连");
     Ok(())
 }

@@ -181,6 +181,7 @@ $("login-form").addEventListener("submit", async (e) => {
   const btn = $("login-btn"), errEl = $("login-error");
   errEl.classList.add("hidden");
   btn.disabled = true; btn.textContent = "登录中…（弱网最长约 2 分钟）";
+  document.title = "PC:[1]invoke已发出";
   try {
     // 不设 UI 超时：Rust 侧每请求 30s 超时 × 有界重试，invoke 必然返回。
     // UI 层超时只会制造"前端已放弃、后端注册成功"的状态分裂（假超时真登录）
@@ -191,15 +192,19 @@ $("login-form").addEventListener("submit", async (e) => {
       deviceName: $("f-device").value.trim(),
       sendToken: $("f-token").value.trim() || null,
     });
+    document.title = "PC:[2]回执到达";
     await refreshStatus();
+    document.title = "PC:[3]状态刷新完成";
     await loadHistory();
   } catch (err) {
+    document.title = "PC:[E]" + String(err).slice(0, 50);
     errEl.textContent = err === "2fa_required"
       ? "该账号开启了两步验证，请填写验证码后重试" : String(err);
     errEl.classList.remove("hidden");
     // 兜底：报错路径也可能已部分成功（如重试期间注册完成）——以真实会话状态定视图
     await refreshStatus();
   } finally {
+    document.title = "PC:[4]按钮恢复";
     btn.disabled = false; btn.textContent = "登录并注册本机";
   }
 });
@@ -533,6 +538,7 @@ $("emergency-bar").addEventListener("click", async (e) => {
 // Rust 侧事件
 // 双保险：登录命令返回链路异常时，Rust 侧主动推送的事件也能切换视图
 listen("login-success", async () => {
+  document.title = "PC:[EV]login-success事件到达";
   $("login-view").classList.add("hidden");
   $("main-view").classList.remove("hidden");
   await refreshStatus();
