@@ -245,6 +245,14 @@ pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<AppSettin
         email: state.session.lock().unwrap_or_else(|p| p.into_inner())
             .as_ref().map(|s| s.email.clone()).unwrap_or_default(),
     })
+    .map(|mut v| {
+        let t = if v.send_token.is_empty() { "<空>".to_string() }
+                else { format!("尾4 {}", &v.send_token[v.send_token.len()-4..]) };
+        let u = if v.send_user.is_empty() { "<空>".to_string() }
+                else { format!("尾4 {}", &v.send_user[v.send_user.len()-4..]) };
+        eprintln!("[settings] get_settings 返回 token={t} user={u}");
+        v
+    })
 }
 
 #[tauri::command]
