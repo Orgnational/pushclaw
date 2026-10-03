@@ -424,6 +424,35 @@ pub async fn list_devices(state: tauri::State<'_, AppState>) -> Result<Vec<Strin
         .map_err(|e| e.to_string())
 }
 
+/// 注册设备（登录后的第二步；可独立重试，不影响登录态）
+#[tauri::command]
+pub async fn register_device(
+    state: tauri::State<'_, AppState>,
+    device_name: String,
+) -> Result<(), String> {
+    let secret = {
+        let sess = state.session.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        sess.map(|s| s.secret).ok_or("请先登录")?
+    };
+    let device_id = crate::pushover::register(&secret, &device_name)
+        .await
+        .map_err(|e| e.to_string())?;
+    {
+        let mut guard = state.session.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(sess) = guard.as_mut() {
+            sess.device_id = device_id.clone();
+            sess.device_name = device_name.clone();
+        }
+    }
+    // 重新持久化完整会话
+    let sess = state.session.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    if let Some(sess) = sess {
+        store::save_session(&sess).map_err(|e| e.to_string())?;
+    }
+    eprintln!("[register] 设备已注册: {device_name} ({device_id})");
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sync_now(app: tauri::AppHandle) -> Result<usize, String> {
     pushover::fetch_and_store(app)

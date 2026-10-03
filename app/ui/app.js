@@ -186,12 +186,19 @@ $("login-form").addEventListener("submit", async (e) => {
         email: $("f-email").value.trim(),
         password: $("f-password").value,
         twofa: $("f-twofa").value.trim() || null,
-        deviceName: $("f-device").value.trim(),
-        send_token: $("f-token").value.trim() || null,
       }),
       new Promise((_, rej) => setTimeout(
-        () => rej(new Error("登录超时（30 秒）——请检查网络后重试；若反复出现请重启应用")), 30000)),
+        () => rej(new Error("登录超时（30 秒）——请检查网络后重试")), 30000)),
     ]);
+    // 第二步：注册设备（独立命令，失败不影响登录态，可单独重试）
+    try {
+      await invoke("register_device", { deviceName: $("f-device").value.trim() });
+    } catch (regErr) {
+      errEl.textContent = "登录成功，但设备注册失败：" + regErr + "（可在设置页重试）";
+      errEl.classList.remove("hidden");
+      btn.disabled = false; btn.textContent = "重试注册设备";
+      return;
+    }
     await refreshStatus();
     await loadHistory();
   } catch (err) {

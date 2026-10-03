@@ -47,6 +47,7 @@ fn main() {
             commands::get_icon,
             commands::login,
             commands::logout,
+            commands::register_device,
             commands::history,
             commands::get_message,
             commands::delete_messages,
