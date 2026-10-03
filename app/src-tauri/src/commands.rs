@@ -372,6 +372,13 @@ fn resolve_send_creds(state: &tauri::State<'_, AppState>) -> Result<(String, Str
     Ok((token, user))
 }
 
+fn rand_suffix() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let n = SystemTime::now().duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos()).unwrap_or(0);
+    format!("{:05x}", n & 0xfffff)
+}
+
 fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes: Vec<u32> = s.bytes()
@@ -440,9 +447,24 @@ pub async fn register_device(
         let sess = state.session.lock().unwrap_or_else(|p| p.into_inner()).clone();
         sess.map(|s| s.secret).ok_or("请先登录")?
     };
-    let device_id = crate::pushover::register(&secret, &device_name)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 注册；若服务端返回"同名已占用"——说明此前响应丢失但注册实际成功，
+    // 换确定性备用名重试一次（避免用户卡死在注册步骤）
+    let device_id = match crate::pushover::register(&secret, &device_name).await {
+        Ok(id) => id,
+        Err(e) => {
+            let msg = e.to_string();
+            if !msg.starts_with("NAME_TAKEN:") {
+                return Err(msg.trim_start_matches("REJECTED: ")
+                    .trim_start_matches("RETRYABLE: ")
+                    .trim_start_matches("NAME_TAKEN: ").to_string());
+            }
+            // 同名已存在：服务端已有该设备，生成备用名重试
+            let retry_name = format!("{}-{}", device_name, rand_suffix());
+            eprintln!("[register] 同名已存在，改用备用名 {retry_name}");
+            crate::pushover::register(&secret, &retry_name).await
+                .map_err(|e| format!("备用名注册也失败: {e}"))?
+        }
+    };
     {
         let mut guard = state.session.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(sess) = guard.as_mut() {

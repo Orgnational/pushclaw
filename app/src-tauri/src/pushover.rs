@@ -207,8 +207,13 @@ pub async fn register(secret: &str, name: &str) -> Result<String> {
     if body.get("status").and_then(|st| st.as_i64()) == Some(1) {
         Ok(body["id"].as_str().unwrap_or_default().to_string())
     } else if status.is_client_error() {
-        // 官方指南：服务端错误应直接呈现给用户，不做无意义的自动重试
-        bail!("REJECTED: {}", api_errors(&body))
+        let errs = api_errors(&body);
+        // "has already been taken"（同名已注册）= 此前响应丢失但注册实际成功。
+        // 上抛给 register_device 的重试逻辑作为幂等恢复信号
+        if errs.contains("has already been taken") {
+            bail!("NAME_TAKEN: {}", errs)
+        }
+        bail!("REJECTED: {}", errs)
     } else {
         bail!("RETRYABLE: {}", api_errors(&body))
     }
