@@ -14,7 +14,6 @@ fn serialized_settings_contains_all_ui_fields() {
         send_token: "t".into(),
         send_user: "u".into(),
         toast: true,
-        notify_sound: false,
         quiet_enabled: false,
         quiet_start: String::new(),
         quiet_end: String::new(),
@@ -25,8 +24,9 @@ fn serialized_settings_contains_all_ui_fields() {
     };
     let json = serde_json::to_value(&st).expect("AppSettings 应可序列化");
     // 设置页渲染读取的每个字段（app.js loadSettings 的 st.* 全集）
+    // notify_sound 已移除（v0.14.2 假开关清理），清单同步
     for field in [
-        "send_token", "send_user", "toast", "notify_sound",
+        "send_token", "send_user", "toast",
         "quiet_enabled", "quiet_start", "quiet_end", "muted_apps",
         "version", "device_name", "email",
     ] {

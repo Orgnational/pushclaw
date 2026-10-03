@@ -283,7 +283,6 @@ async function loadSettings() {
   const emailEl = $("set-email"); if (emailEl) emailEl.textContent = st.email || "-";
   $("set-version").textContent = "v" + st.version;
   $("set-toast").checked = st.toast;
-  $("set-sound").checked = st.notify_sound;
   $("set-quiet").checked = st.quiet_enabled;
   $("set-quiet-start").value = st.quiet_start || "23:00";
   $("set-quiet-end").value = st.quiet_end || "08:00";
@@ -311,7 +310,6 @@ $("set-save").addEventListener("click", async () => {
       send_token: $("set-token").value.trim(),
       send_user: $("set-user").value.trim(),
       toast: $("set-toast").checked,
-      notify_sound: $("set-sound").checked,
       quiet_enabled: $("set-quiet").checked,
       quiet_start: $("set-quiet-start").value || "23:00",
       quiet_end: $("set-quiet-end").value || "08:00",

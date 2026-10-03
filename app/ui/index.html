@@ -114,7 +114,6 @@
       <section class="set-sec">
         <h3>通知</h3>
         <label class="switch-row"><input id="set-toast" type="checkbox" /> 收到新消息时弹出系统 Toast</label>
-        <label class="switch-row"><input id="set-sound" type="checkbox" /> 播放提示音（随系统通知）</label>
         <label class="switch-row"><input id="set-quiet" type="checkbox" /> 免打扰时段（紧急消息仍会提醒）</label>
         <div class="quiet-row" id="quiet-row"><input id="set-quiet-start" type="time" value="23:00" /> 至 <input id="set-quiet-end" type="time" value="08:00" /></div>
       </section>
@@ -130,7 +129,7 @@
           <button id="set-save" class="ghost">保存</button>
           <button id="set-sendtest" class="ghost">发送测试消息</button>
         </div>
-        <p class="muted small">凭据保存在本机 settings.json；此处与 CLI 共用配置时保存会以本页为准。</p>
+        <p class="muted small">User Key 已在登录时自动填入；Token 在 pushover.net/apps 创建后补填（不填只影响发送，不影响接收）。二者保存在本机 settings.json。</p>
       </section>
     </div>
     <footer>

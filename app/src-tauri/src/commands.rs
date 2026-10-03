@@ -47,6 +47,14 @@ pub async fn login(
     device_name: String,
     send_token: Option<String>,
 ) -> Result<(), String> {
+    // 可选发送凭据：先校验再登录（校验失败不产生任何副作用——
+    // 此前放在 save_session 之后，报错时登录实际已成功，状态分裂）
+    let send_token = send_token.as_deref().map(str::trim).filter(|t| !t.is_empty());
+    if let Some(tk) = send_token {
+        if tk.chars().count() != 30 {
+            return Err("API Token 应为 30 位字符，请检查后重试".into());
+        }
+    }
     // 单步式（回滚）：登录 + 注册设备一次完成——这是实测能注册成功的形态。
     // 网络层修复保留在 login_and_register 内部（退避重试 / NAME_TAKEN 备用名 /
     // 连接池加固 / 错误分类）。
@@ -57,17 +65,17 @@ pub async fn login(
     .map_err(|e| e.to_string())?;
     eprintln!("[login] ③ 保存会话...");
     store::save_session(&sess).map_err(|e| e.to_string())?;
-    // 可选发送凭据：填了 Token 就把"发送身份"一并配置好（User Key 用登录返回的）
-    if let Some(tk) = send_token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        if tk.chars().count() != 30 {
-            return Err("API Token 应为 30 位字符，请检查后重试".into());
-        }
+    // 发送凭据：user_key 登录即得，无条件入库（设置页 User Key 永不为空）；
+    // token 可选，填了才具备发送身份
+    {
         let mut st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        st.send_token = tk.to_string();
         st.send_user = sess.user_key.clone();
+        if let Some(tk) = send_token {
+            st.send_token = tk.to_string();
+        }
         store::save_settings(&st).map_err(|e| e.to_string())?;
         *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st;
-        eprintln!("[login] 发送凭据已保存");
+        eprintln!("[login] 发送凭据已保存（user 无条件 / token 可选）");
     }
     let device_name_for_event = sess.device_name.clone();
     *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
@@ -184,8 +192,8 @@ pub struct AppSettings {
     pub send_user: String,
     #[serde(default)]
     pub toast: bool,
-    #[serde(default)]
-    pub notify_sound: bool,
+    // notify_sound 已移除（v0.14.2）：曾是无任何使用点的假开关——
+    // 系统通知声音由操作系统通知设置控制，应用层无 API 可关
     #[serde(default)]
     pub quiet_enabled: bool,
     #[serde(default)]
@@ -205,24 +213,24 @@ pub struct AppSettings {
 
 #[tauri::command]
 pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<AppSettings, String> {
-    let st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
-    // 发送凭据缺省时，尝试从 CLI 配置文件带出（用户已在 CLI 配置过则零输入）
-    let (mut token, mut user) = (st.send_token.clone(), st.send_user.clone());
-    if token.is_empty() || user.is_empty() {
-        let cfg = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
-            .join(".config/pushover/config.json");
-        if let Ok(raw) = std::fs::read_to_string(&cfg) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-                if token.is_empty() { token = v["token"].as_str().unwrap_or("").into(); }
-                if user.is_empty() { user = v["user"].as_str().unwrap_or("").into(); }
-            }
+    let mut st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    // User Key 自愈：v0.14.1 前登录未无条件入库，存量安装的 settings.json 里
+    // send_user 可能为空——用当前会话的 user_key 补齐并持久化。
+    // 凭据单一来源 settings.json，不再回落 Python 栈残留的 CLI config.json
+    if st.send_user.is_empty() {
+        let uk = state.session.lock().unwrap_or_else(|p| p.into_inner())
+            .as_ref().map(|s| s.user_key.clone()).unwrap_or_default();
+        if !uk.is_empty() {
+            st.send_user = uk;
+            store::save_settings(&st).map_err(|e| e.to_string())?;
+            *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st.clone();
+            eprintln!("[settings] send_user 已从会话自愈入库");
         }
     }
     Ok(AppSettings {
-        send_token: token,
-        send_user: user,
+        send_token: st.send_token.clone(),
+        send_user: st.send_user.clone(),
         toast: st.toast,
-        notify_sound: st.notify_sound,
         quiet_enabled: st.quiet_enabled,
         quiet_start: st.quiet_start.clone(),
         quiet_end: st.quiet_end.clone(),
@@ -244,7 +252,6 @@ pub async fn save_settings(
         send_token: settings.send_token,
         send_user: settings.send_user,
         toast: settings.toast,
-        notify_sound: settings.notify_sound,
         quiet_enabled: settings.quiet_enabled,
         quiet_start: settings.quiet_start,
         quiet_end: settings.quiet_end,
@@ -352,22 +359,12 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
-/// 发送凭据：设置页保存的优先，缺省回落 CLI config.json
+/// 发送凭据：单一来源 settings.json（user_key 登录自动填 / token 设置页补填）
 fn resolve_send_creds(state: &tauri::State<'_, AppState>) -> Result<(String, String), String> {
     let st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
-    let (mut token, mut user) = (st.send_token.clone(), st.send_user.clone());
+    let (token, user) = (st.send_token, st.send_user);
     if token.is_empty() || user.is_empty() {
-        let cfg = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
-            .join(".config/pushover/config.json");
-        if let Ok(raw) = std::fs::read_to_string(&cfg) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-                if token.is_empty() { token = v["token"].as_str().unwrap_or("").into(); }
-                if user.is_empty() { user = v["user"].as_str().unwrap_or("").into(); }
-            }
-        }
-    }
-    if token.is_empty() || user.is_empty() {
-        return Err("请先在设置页填写发送凭据".into());
+        return Err("请先在设置页填写发送凭据（Token 30 位；User Key 已由登录自动填入）".into());
     }
     Ok((token, user))
 }
@@ -506,6 +503,8 @@ mod tests {
 
     /// 回归：前端 save_settings 载荷（不含 version/device_name）必须可反序列化。
     /// v0.11.x 曾因这两个字段必填导致保存被 serde 拒绝（UI 显示保存无效）。
+    /// 载荷特意保留已废弃的 notify_sound：serde 忽略未知字段，
+    /// 旧版前端的载荷也必须永远可被新版后端接受（前后端独立升级兼容）。
     #[test]
     fn frontend_payload_deserializes() {
         let payload = r#"{
@@ -519,7 +518,7 @@ mod tests {
             "muted_apps": ["AppA", "AppB"]
         }"#;
         let st: AppSettings =
-            serde_json::from_str(payload).expect("前端载荷应可反序列化");
+            serde_json::from_str(payload).expect("前端载荷应可反序列化（含废弃字段）");
         assert_eq!(st.send_token, "token-x");
         assert!(st.quiet_enabled);
         assert_eq!(st.muted_apps.len(), 2);
