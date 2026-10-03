@@ -218,12 +218,24 @@ pub struct AppSettings {
 #[tauri::command]
 pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<AppSettings, String> {
     let mut st = state.settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    // 会话只读字段：一次拿锁、guard 先释放再构造返回值。
+    // 此前写成 Ok(AppSettings{ device_name: state.session.lock()..., email: state.session.lock()... })：
+    // 结构体字面量字段的临时 guard 存活到整个表达式结束，第二个字段同线程
+    // 递归 lock 同一把锁 → 永久自死锁（设置页发送凭据空白的根因，lldb 实证
+    // mutex owner == 等待者自身）
+    let (device_name, email) = {
+        let guard = state.session.lock().unwrap_or_else(|p| p.into_inner());
+        (guard.as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
+         guard.as_ref().map(|s| s.email.clone()).unwrap_or_default())
+    };
     // User Key 自愈：v0.14.1 前登录未无条件入库，存量安装的 settings.json 里
     // send_user 可能为空——用当前会话的 user_key 补齐并持久化。
     // 凭据单一来源 settings.json，不再回落 Python 栈残留的 CLI config.json
     if st.send_user.is_empty() {
-        let uk = state.session.lock().unwrap_or_else(|p| p.into_inner())
-            .as_ref().map(|s| s.user_key.clone()).unwrap_or_default();
+        let uk = {
+            let guard = state.session.lock().unwrap_or_else(|p| p.into_inner());
+            guard.as_ref().map(|s| s.user_key.clone()).unwrap_or_default()
+        };
         if !uk.is_empty() {
             st.send_user = uk;
             store::save_settings(&st).map_err(|e| e.to_string())?;
@@ -240,10 +252,8 @@ pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<AppSettin
         quiet_end: st.quiet_end.clone(),
         muted_apps: st.muted_apps.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        device_name: state.session.lock().unwrap_or_else(|p| p.into_inner())
-            .as_ref().map(|s| s.device_name.clone()).unwrap_or_default(),
-        email: state.session.lock().unwrap_or_else(|p| p.into_inner())
-            .as_ref().map(|s| s.email.clone()).unwrap_or_default(),
+        device_name,
+        email,
     })
     .map(|mut v| {
         let t = if v.send_token.is_empty() { "<空>".to_string() }
