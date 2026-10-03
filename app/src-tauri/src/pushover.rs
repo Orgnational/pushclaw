@@ -764,7 +764,16 @@ async fn run_connection(app: &tauri::AppHandle, sess: &Session) -> Result<()> {
                                 "#" => {}
                                 "!" => { eprintln!("[ws] 收到 ! 信号"); let _ = fetch_and_store(app.clone()).await; }
                                 "R" => break Err(anyhow!("服务端要求重连(R)")),
-                                "E" => break Err(anyhow!("永久错误(E)，需要重新登录")),
+                                "E" => {
+                                    // 实测（2026-09-27/28）：进程强杀后服务端对该设备
+                                    // ws 短暂返回 E（REST 仍有效）——同名重注册立即恢复。
+                                    // 直接自愈而非要求用户重新登录
+                                    eprintln!("[ws] 收到 E 帧，尝试同名重注册自愈");
+                                    if let Err(e) = re_register(&app).await {
+                                        eprintln!("[ws] 重注册失败: {e}");
+                                    }
+                                    break Err(anyhow!("E 帧后重注册，重连中"));
+                                }
                                 "A" => break Err(anyhow!("设备被另一会话接管(A)，请更换设备名")),
                                 other => { let _ = app.emit("ws-log", other.to_string()); }
                             }

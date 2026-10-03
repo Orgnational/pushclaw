@@ -37,15 +37,23 @@ pub async fn login(
     email: String,
     password: String,
     twofa: Option<String>,
-    device_name: String,
+    device_name: Option<String>,
     send_token: Option<String>,
 ) -> Result<(), String> {
-    let sess = crate::pushover::login_and_register(
-        &email, &password, twofa.as_deref(), &device_name,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    // 登录与设备注册拆分（v0.14 前端两步流程）：
+    // 本命令只验证账号并保存会话（device_id 留空）；
+    // 设备注册由前端随后调用 register_device 完成
+    let (user_key, secret) = crate::pushover::login(&email, &password, twofa.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
     eprintln!("[login] ③ 保存会话...");
+    let sess = store::Session {
+        email: email.clone(),
+        user_key,
+        secret,
+        device_id: String::new(),
+        device_name: device_name.unwrap_or_default(),
+    };
     store::save_session(&sess).map_err(|e| e.to_string())?;
     // 可选发送凭据：填了 Token 就把"发送身份"一并配置好（User Key 用登录返回的）
     if let Some(tk) = send_token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
@@ -59,17 +67,10 @@ pub async fn login(
         *state.settings.lock().unwrap_or_else(|p| p.into_inner()) = st;
         eprintln!("[login] 发送凭据已保存");
     }
-    let device_name_for_event = sess.device_name.clone();
     *state.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sess);
     eprintln!("[login] ④ 通知 ws 线程...");
     let _ = state.session_tx.send(*state.session_tx.borrow() + 1);
-    let h = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = pushover::fetch_and_store(h).await;
-    });
     eprintln!("[login] ⑤ 完成，返回前端");
-    // 双保险：invoke 返回链路异常时，事件仍能驱动前端切换视图
-    let _ = app.emit("login-success", device_name_for_event);
     Ok(())
 }
 
