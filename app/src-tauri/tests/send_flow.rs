@@ -13,8 +13,17 @@ fn spawn_mock(port: u16, hits: std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
                 Err(_) => break,
             };
             let mut buf = vec![0u8; 65536];
-            let n = s.read(&mut buf).unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+            // 循环读至超时：请求头与 multipart body 可能分多个 TCP 段到达，
+            // 单次 read 会漏掉 body 导致 attachment 断言随机失败
+            s.set_read_timeout(Some(std::time::Duration::from_millis(300))).unwrap();
+            let mut req = String::new();
+            loop {
+                match s.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => req.push_str(&String::from_utf8_lossy(&buf[..n])),
+                    Err(_) => break,   // 超时：本请求已读完
+                }
+            }
             // 记录请求头与 body 摘要（multipart 边界后为字段）
             if let Some(first) = req.lines().next() {
                 hits.lock().unwrap().push(first.to_string());

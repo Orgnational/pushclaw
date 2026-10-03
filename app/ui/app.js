@@ -180,35 +180,25 @@ $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = $("login-btn"), errEl = $("login-error");
   errEl.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "登录中…";
+  btn.disabled = true; btn.textContent = "登录中…（弱网最长约 2 分钟）";
   try {
-    // 30s 超时保护：即使 IPC 异常也不会永久卡在登录中
-    await Promise.race([
-      invoke("login", {
-        email: $("f-email").value.trim(),
-        password: $("f-password").value,
-        twofa: $("f-twofa").value.trim() || null,
-      }),
-      new Promise((_, rej) => setTimeout(
-        () => rej(new Error("登录超时（30 秒）——请检查网络后重试")), 30000)),
-    ]);
-    // 第二步：注册设备（独立命令，失败不影响登录态，可单独重试）
-    let registered = false;
-    try {
-      await invoke("register_device", { deviceName: $("f-device").value.trim() });
-      registered = true;
-    } catch (regErr) {
-      errEl.textContent = "登录成功，但设备注册失败：" + regErr + "（可修正设备名后重试）";
-      errEl.classList.remove("hidden");
-      btn.disabled = false; btn.textContent = "重试注册设备";
-      return;   // 停在登录页：设备没注册成功就不进主界面（避免半配置状态）
-    }
+    // 不设 UI 超时：Rust 侧每请求 30s 超时 × 有界重试，invoke 必然返回。
+    // UI 层超时只会制造"前端已放弃、后端注册成功"的状态分裂（假超时真登录）
+    await invoke("login", {
+      email: $("f-email").value.trim(),
+      password: $("f-password").value,
+      twofa: $("f-twofa").value.trim() || null,
+      deviceName: $("f-device").value.trim(),
+      sendToken: $("f-token").value.trim() || null,
+    });
     await refreshStatus();
     await loadHistory();
   } catch (err) {
     errEl.textContent = err === "2fa_required"
       ? "该账号开启了两步验证，请填写验证码后重试" : String(err);
     errEl.classList.remove("hidden");
+    // 兜底：报错路径也可能已部分成功（如重试期间注册完成）——以真实会话状态定视图
+    await refreshStatus();
   } finally {
     btn.disabled = false; btn.textContent = "登录并注册本机";
   }
@@ -472,11 +462,8 @@ $("logout-btn").addEventListener("click", async () => {
   btn.title = "退出登录";
   try {
     console.log("[logout] 确认态，调用 logout 命令");
-    // 5 秒超时保护：即使 IPC 异常 UI 也不会永久冻结
-    await Promise.race([
-      invoke("logout"),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("退出超时")), 5000)),
-    ]);
+    // logout 是纯本地操作（清内存会话 + 删文件），无网络调用；UI 超时只会制造假失败
+    await invoke("logout");
     setSelecting(false);
     $("emergency-bar").classList.add("hidden");
     await refreshStatus();
