@@ -67,13 +67,15 @@ fn main() {
             // 复刻 login 命令的完整后端路径（登录+注册+存盘+emit login-success），
             // 用于脱离 GUI 表单输入验证"后端成功→前端跳转"链路。正常用户不受影响。
             if let Ok(creds) = std::env::var("PUSHOVER_DEBUG_LOGIN") {
-                let parts: Vec<&str> = creds.splitn(3, ':').collect();
-                if parts.len() == 3 {
+                let parts: Vec<&str> = creds.splitn(4, ':').collect();
+                if parts.len() >= 3 {
                     let (e, p, n) = (parts[0].to_string(), parts[1].to_string(), parts[2].to_string());
+                    let tk = parts.get(3).map(|s| s.to_string());
                     let handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(std::time::Duration::from_secs(4)).await;   // 等前端就绪
-                        eprintln!("[debug-login] 开始（{e} / 设备 {n}）");
+                        eprintln!("[debug-login] 开始（{e} / 设备 {n} / token {}）",
+                            if tk.is_some() {"已带"} else {"未带"});
                         match pushover::login_and_register(&e, &p, None, &n).await {
                             Ok(sess) => {
                                 use tauri::{Emitter, Manager};
@@ -84,8 +86,11 @@ fn main() {
                                 {
                                     let mut s = st.settings.lock().unwrap_or_else(|x| x.into_inner()).clone();
                                     s.send_user = sess.user_key.clone();
+                                    if let Some(ref t) = tk { s.send_token = t.clone(); }
                                     store::save_settings(&s).expect("debug: 存设置");
-                                    *st.settings.lock().unwrap_or_else(|x| x.into_inner()) = s;
+                                    *st.settings.lock().unwrap_or_else(|x| x.into_inner()) = s.clone();
+                                    eprintln!("[debug-login] c. settings 已落盘 token尾4={}",
+                                        &s.send_token[s.send_token.len().saturating_sub(4).max(0)..]);
                                 }
                                 eprintln!("[debug-login] c. settings 已落盘");
                                 *st.session.lock().unwrap_or_else(|x| x.into_inner()) = Some(sess.clone());
