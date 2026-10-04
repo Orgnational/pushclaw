@@ -172,7 +172,8 @@ fn main() {
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = event {
                 let st = app.state::<AppState>();
-                let latest = *st.latest_new.lock().unwrap();
+                // 主线程事件回调：锁中毒不可 panic（会崩掉整个应用）
+                let latest = *st.latest_new.lock().unwrap_or_else(|p| p.into_inner());
                 if let Some(id) = latest {
                     let _ = app.emit("navigate-latest", id);
                 }
