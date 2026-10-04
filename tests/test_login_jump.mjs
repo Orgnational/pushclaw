@@ -29,7 +29,7 @@ window.__TAURI__ = { core: { invoke: async (cmd, args) => {
       loginDone = true;
       return;
     case "history": return loginDone ? [{ id: "1", umid: "u1", title: "t", message: "m", html: false, priority: 0, url: "", url_title: "", app: "a", date: 1, acked: false, receipt: "", archived: false, read: true, icon: "" }] : [];
-    case "get_settings": return { send_token: "", send_user: "", toast: true, notify_sound: false, quiet_enabled: false, quiet_start: "", quiet_end: "", muted_apps: [], version: "t", device_name: "d", email: "t@t" };
+    case "get_settings": return { send_token: "", send_user: "", toast: true, quiet_enabled: false, quiet_start: "", quiet_end: "", muted_apps: [], version: "t", device_name: "d", email: "t@t" };
     case "list_apps": return ["A"];
     case "get_icon": return null;
     default: return null;

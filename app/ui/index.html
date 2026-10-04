@@ -13,22 +13,18 @@
       <div class="brand">
         <svg class="claw brand-claw" viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><path d="M5 3.2 C5.9 6 6.6 10.5 6.2 15.5 C6 18 5.4 20 4.9 20.8 C4.3 19.6 3.6 16.5 3.7 12.6 C3.8 8.6 4.4 5.2 5 3.2 Z"/><path d="M12 2 C13.1 5.4 13.9 10.6 13.5 16.4 C13.3 19.4 12.6 21.8 12 22.8 C11.3 21.4 10.5 17.7 10.6 13.2 C10.7 8.5 11.4 4.5 12 2 Z"/><path d="M19 3.2 C19.6 5.2 20.2 8.6 20.3 12.6 C20.4 16.5 19.7 19.6 19.1 20.8 C18.6 20 17.9 18 17.8 15.5 C17.4 10.5 18.1 6 19 3.2 Z"/></g></svg>
         <h1>PushClaw</h1>
-        <p class="muted">登录你的 Pushover 账号，本机将注册为一台接收设备<br>
-        <span class="small">需要桌面许可 · 非官方客户端 · 凭据仅存本机</span></p>
+        <p class="muted">非官方客户端 · 凭据仅存本机</p>
       </div>
       <form id="login-form">
         <label>邮箱<input id="f-email" type="email" required autocomplete="username" /></label>
         <label>密码<input id="f-password" type="password" required autocomplete="current-password" /></label>
-        <label>两步验证码 <span class="muted small">（开启了两步验证才填）</span>
+        <label>两步验证码
           <input id="f-twofa" type="text" inputmode="numeric" placeholder="可选" /></label>
         <label>设备名<input id="f-device" type="text" value="mac-app" required pattern="[A-Za-z0-9_-]{1,25}" /></label>
-        <label>API Token <span class="muted small">（可选，30 位）</span>
-          <input id="f-token" type="text" placeholder="不填则只能接收" autocomplete="off" /></label>
-        <p class="muted small">Token 的作用：标识"哪个应用在发消息"（通知上显示的应用身份）。
-        填了它，这台机器就能从"发送"标签直接发消息；不填只影响发送，接收完全正常，
-        之后可在设置页补填。在 pushover.net/apps/build 免费创建。</p>
+        <label>API Token
+          <input id="f-token" type="text" placeholder="可选 · pushover.net/apps" autocomplete="off" /></label>
         <div id="login-error" class="error hidden"></div>
-        <button id="login-btn" type="submit">登录并注册本机</button>
+        <button id="login-btn" type="submit">登录</button>
       </form>
     </div>
   </div>
@@ -83,17 +79,17 @@
       <section class="set-sec">
         <h3>新消息</h3>
         <label>标题（可选）<input id="snd-title" type="text" /></label>
-        <label>正文<textarea id="snd-message" rows="4" placeholder="支持 5 标签 HTML（勾选富文本）或纯文本"></textarea></label>
-        <label class="switch-row"><input id="snd-html" type="checkbox" /> 富文本（HTML）</label>
+        <label>正文<textarea id="snd-message" rows="4" placeholder="支持 HTML 富文本"></textarea></label>
+        <label class="switch-row"><input id="snd-html" type="checkbox" /> 富文本</label>
         <label>优先级
           <select id="snd-priority">
             <option value="0">常规</option>
-            <option value="1">高优（一次响铃）</option>
-            <option value="2">紧急（响到确认）</option>
+            <option value="1">高优</option>
+            <option value="2">紧急</option>
             <option value="-1">静默</option>
           </select>
         </label>
-        <label>图片附件（≤5MB，可选）<input id="snd-image" type="file" accept=".png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff" /></label>
+        <label>图片附件<input id="snd-image" type="file" accept=".png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff" /></label>
         <label>附加链接<input id="snd-url" type="url" placeholder="https:// 或 app:// 深链" /></label>
         <label>目标设备
           <select id="snd-device"><option value="">全部设备</option></select>
@@ -114,7 +110,6 @@
       <section class="set-sec">
         <h3>通知</h3>
         <label class="switch-row"><input id="set-toast" type="checkbox" /> 收到新消息时弹出系统 Toast</label>
-        <label class="switch-row"><input id="set-sound" type="checkbox" /> 播放提示音（随系统通知）</label>
         <label class="switch-row"><input id="set-quiet" type="checkbox" /> 免打扰时段（紧急消息仍会提醒）</label>
         <div class="quiet-row" id="quiet-row"><input id="set-quiet-start" type="time" value="23:00" /> 至 <input id="set-quiet-end" type="time" value="08:00" /></div>
       </section>
@@ -123,14 +118,13 @@
         <div id="muted-list" class="muted small">在消息页出现应用后可配置</div>
       </section>
       <section class="set-sec">
-        <h3>发送凭据（测试发送用）</h3>
+        <h3>发送</h3>
         <label>API Token<input id="set-token" type="text" placeholder="30 位应用 Token" /></label>
         <label>User Key<input id="set-user" type="text" placeholder="账号 User Key" /></label>
         <div class="set-actions">
           <button id="set-save" class="ghost">保存</button>
           <button id="set-sendtest" class="ghost">发送测试消息</button>
         </div>
-        <p class="muted small">凭据保存在本机 settings.json；此处与 CLI 共用配置时保存会以本页为准。</p>
       </section>
     </div>
     <footer>
@@ -153,7 +147,7 @@
       <div id="detail-meta"></div>
       <div id="detail-actions">
         <a id="detail-url" class="hidden" href="#">打开链接 ↗</a>
-        <button id="detail-ack" class="hidden urgent-btn">确认（全设备静默）</button>
+        <button id="detail-ack" class="hidden urgent-btn">确认</button>
         <button id="detail-archive" class="ghost"></button>
         <button id="detail-delete" class="danger">删除</button>
       </div>

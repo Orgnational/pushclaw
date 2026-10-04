@@ -62,7 +62,7 @@ window.__TAURI__ = {
         case "ack": return;
         case "sync_now": return 0;
         case "get_settings": return {
-          send_token: "", send_user: "", toast: true, notify_sound: false,
+          send_token: "", send_user: "", toast: true,
           quiet_enabled: false, quiet_start: "23:00", quiet_end: "08:00",
           muted_apps: [], version: "test", device_name: "test",
         };

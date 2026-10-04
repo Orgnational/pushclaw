@@ -80,26 +80,16 @@ enum Cmd {
     },
 }
 
-/// 发送方凭据：环境变量 > ~/.config/pushover/config.json > app.json(user_key)
+/// 发送方凭据：环境变量（临时覆盖）> settings.json（与桌面端设置页同一存储，登录页/设置页配置）> app.json(user_key 兜底)
 fn load_credentials() -> Result<(String, String)> {
-    let mut token = std::env::var("PUSHOVER_TOKEN").ok();
-    let mut user = std::env::var("PUSHOVER_USER").ok();
-    let cfg = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
-        .join(".config/pushover/config.json");
-    if let Ok(raw) = std::fs::read_to_string(&cfg) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-            if token.is_none() { token = v["token"].as_str().map(String::from); }
-            if user.is_none() { user = v["user"].as_str().map(String::from); }
-        }
-    }
-    if token.is_none() || user.is_none() {
-        // 桌面端设置页保存的发送凭据（settings.json）
-        let st = pushclaw_core::store::load_settings();
-        if token.is_none() && !st.send_token.is_empty() { token = Some(st.send_token); }
-        if user.is_none() && !st.send_user.is_empty() { user = Some(st.send_user); }
-    }
+    let mut token = std::env::var("PUSHOVER_TOKEN").ok().filter(|t| !t.is_empty());
+    let mut user = std::env::var("PUSHOVER_USER").ok().filter(|u| !u.is_empty());
+    // 唯一存储：桌面端 settings.json（登录页无条件写入 user_key；token 由登录页或设置页配置）
+    let st = pushclaw_core::store::load_settings();
+    if token.is_none() && !st.send_token.is_empty() { token = Some(st.send_token); }
+    if user.is_none() && !st.send_user.is_empty() { user = Some(st.send_user); }
     if user.is_none() {
-        // 桌面端会话里存的 user_key 与账号一致，可兜底
+        // 会话里存的 user_key 与账号一致，可兜底
         let app_cfg = pushclaw_core::store::data_dir().join("app.json");
         if let Ok(raw) = std::fs::read_to_string(&app_cfg) {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
@@ -109,23 +99,18 @@ fn load_credentials() -> Result<(String, String)> {
     }
     match (token, user) {
         (Some(t), Some(u)) => Ok((t, u)),
-        _ => bail!("缺少凭据：PUSHOVER_TOKEN/PUSHOVER_USER 环境变量，或 ~/.config/pushover/config.json"),
+        _ => bail!("缺少发送凭据：请在应用登录页配置 API Token（或设置页补填）"),
     }
 }
 
 /// 回执查询只需发送方 token。
 fn load_token() -> Result<String> {
-    if let Ok(t) = std::env::var("PUSHOVER_TOKEN") { return Ok(t); }
-    let cfg = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
-        .join(".config/pushover/config.json");
-    if let Ok(raw) = std::fs::read_to_string(&cfg) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-            if let Some(t) = v["token"].as_str() { return Ok(t.to_string()); }
-        }
+    if let Ok(t) = std::env::var("PUSHOVER_TOKEN") {
+        if !t.is_empty() { return Ok(t); }
     }
     let st = pushclaw_core::store::load_settings();
     if !st.send_token.is_empty() { return Ok(st.send_token); }
-    bail!("缺少 token：PUSHOVER_TOKEN 环境变量、设置页发送凭据，或 ~/.config/pushover/config.json")
+    bail!("缺少 token：请在应用登录页配置 API Token（或设置页补填）")
 }
 
 #[tokio::main]

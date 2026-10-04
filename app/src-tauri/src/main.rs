@@ -63,6 +63,51 @@ fn main() {
                 pushover::ws_loop(handle).await;
             });
 
+            // 端到端诊断通道（PUSHOVER_DEBUG_LOGIN=email:password:device_name 时启用）：
+            // 复刻 login 命令的完整后端路径（登录+注册+存盘+emit login-success），
+            // 用于脱离 GUI 表单输入验证"后端成功→前端跳转"链路。正常用户不受影响。
+            if let Ok(creds) = std::env::var("PUSHOVER_DEBUG_LOGIN") {
+                let parts: Vec<&str> = creds.splitn(4, ':').collect();
+                if parts.len() >= 3 {
+                    let (e, p, n) = (parts[0].to_string(), parts[1].to_string(), parts[2].to_string());
+                    let tk = parts.get(3).map(|s| s.to_string());
+                    let handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(4)).await;   // 等前端就绪
+                        eprintln!("[debug-login] 开始（{e} / 设备 {n} / token {}）",
+                            if tk.is_some() {"已带"} else {"未带"});
+                        match pushover::login_and_register(&e, &p, None, &n).await {
+                            Ok(sess) => {
+                                use tauri::{Emitter, Manager};
+                                eprintln!("[debug-login] a. 协议完成 device_id={}", sess.device_id);
+                                store::save_session(&sess).expect("debug: 存会话");
+                                eprintln!("[debug-login] b. app.json 已落盘");
+                                let st = handle.state::<crate::AppState>();
+                                {
+                                    let mut s = st.settings.lock().unwrap_or_else(|x| x.into_inner()).clone();
+                                    s.send_user = sess.user_key.clone();
+                                    if let Some(ref t) = tk { s.send_token = t.clone(); }
+                                    store::save_settings(&s).expect("debug: 存设置");
+                                    *st.settings.lock().unwrap_or_else(|x| x.into_inner()) = s.clone();
+                                    eprintln!("[debug-login] c. settings 已落盘 token尾4={}",
+                                        &s.send_token[s.send_token.len().saturating_sub(4).max(0)..]);
+                                }
+                                eprintln!("[debug-login] c. settings 已落盘");
+                                *st.session.lock().unwrap_or_else(|x| x.into_inner()) = Some(sess.clone());
+                                eprintln!("[debug-login] d. 内存会话已置");
+                                let ver = *st.session_tx.borrow() + 1;
+                                let _ = st.session_tx.send(ver);
+                                eprintln!("[debug-login] e. session_tx 已发");
+                                let r = handle.emit("login-success", sess.device_name.clone());
+                                eprintln!("[debug-login] f. emit 返回 {:?}", r.map(|_| "ok"));
+                                eprintln!("[debug-login] 完成：会话已存，login-success 已 emit");
+                            }
+                            Err(e) => eprintln!("[debug-login] 失败: {e}"),
+                        }
+                    });
+                }
+            }
+
             // 托盘
             let show = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
             let sync = MenuItemBuilder::with_id("sync", "立即同步").build(app)?;
@@ -127,7 +172,8 @@ fn main() {
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = event {
                 let st = app.state::<AppState>();
-                let latest = *st.latest_new.lock().unwrap();
+                // 主线程事件回调：锁中毒不可 panic（会崩掉整个应用）
+                let latest = *st.latest_new.lock().unwrap_or_else(|p| p.into_inner());
                 if let Some(id) = latest {
                     let _ = app.emit("navigate-latest", id);
                 }

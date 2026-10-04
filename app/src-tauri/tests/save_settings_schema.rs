@@ -5,6 +5,8 @@
 use pushclaw_core::commands::AppSettings;
 
 /// 前端 app.js save 按钮发送的确切载荷形状（无 version/device_name）。
+/// notify_sound 是已废弃字段的镜像（v0.14.2 前的前端载荷形状）——
+/// serde 忽略未知字段，旧形状必须永远可被接受（前后端独立升级兼容）。
 const FRONTEND_PAYLOAD: &str = r#"{
     "send_token": "token-x",
     "send_user": "user-x",
@@ -19,11 +21,10 @@ const FRONTEND_PAYLOAD: &str = r#"{
 #[test]
 fn frontend_payload_deserializes() {
     let st: AppSettings = serde_json::from_str(FRONTEND_PAYLOAD)
-        .expect("前端保存载荷必须可反序列化（缺省字段不应拒绝）");
+        .expect("前端保存载荷必须可反序列化（缺省/废弃字段不应拒绝）");
     assert_eq!(st.send_token, "token-x");
     assert_eq!(st.send_user, "user-x");
     assert!(st.toast);
-    assert!(!st.notify_sound);
     assert!(st.quiet_enabled);
     assert_eq!(st.quiet_start, "23:00");
     assert_eq!(st.quiet_end, "08:00");

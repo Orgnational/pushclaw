@@ -401,11 +401,13 @@ pub async fn login_and_register(
 
     // 注册带退避重试（网络停滞/响应丢失时服务端往往已注册成功——
     // 同名重注册会产生重复设备，但保证客户端拿到可用 device_id；
-    // 重复条目可在官网设备页清理，比让用户永远卡在登录界面对）
+    // 重复条目可在官网设备页清理，比让用户永远卡在登录界面对）。
+    // NAME_TAKEN（同名已占用）= 此前响应丢失但注册实际成功：换备用名立即重试。
     let mut device_id = String::new();
+    let mut registered_name = device_name.to_string();
     let mut last_err = None::<anyhow::Error>;
     for (attempt, gap) in [(1, 0u64), (2, 3), (3, 8), (4, 15)] {
-        match register(&secret, device_name).await {
+        match register(&secret, &registered_name).await {
             Ok(id) => {
                 device_id = id;
                 if attempt > 1 {
@@ -415,6 +417,26 @@ pub async fn login_and_register(
             }
             Err(e) => {
                 let msg = e.to_string();
+                if msg.starts_with("NAME_TAKEN:") {
+                    // 设备已存在（此前注册响应丢失）→ 备用名（短随机后缀）重试
+                    let fallback = format!("{}-{:x}", device_name,
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.subsec_nanos() & 0xffff)
+                            .unwrap_or(0));
+                    eprintln!("[login] 同名设备已存在（此前注册实际成功），改用备用名 {fallback}");
+                    match register(&secret, &fallback).await {
+                        Ok(id) => {
+                            device_id = id;
+                            registered_name = fallback;
+                            break;
+                        }
+                        Err(e2) => {
+                            last_err = Some(anyhow!("{e2}"));
+                            continue;
+                        }
+                    }
+                }
                 // 官方指南：服务端明确拒绝（名称非法等）应立即呈现，不重试
                 if msg.starts_with("REJECTED:") {
                     return Err(anyhow!("{}", msg.trim_start_matches("REJECTED: ")));
@@ -429,7 +451,7 @@ pub async fn login_and_register(
     }
     if device_id.is_empty() {
         bail!(
-            "设备注册失败（已重试 4 次）: {} —— 请检查网络后重试；若提示设备名已存在，说明此前已注册成功，可直接重启应用继续",
+            "设备注册失败（已重试 4 次）: {} —— 请检查网络后重试",
             last_err.map(|e| e.to_string()).unwrap_or_default()
         );
     }
@@ -439,7 +461,7 @@ pub async fn login_and_register(
         user_key,
         secret,
         device_id,
-        device_name: device_name.to_string(),
+        device_name: registered_name,
     })
 }
 
@@ -635,7 +657,9 @@ pub async fn re_register(app: &tauri::AppHandle) -> Result<()> {
     let new_sess = Session { device_id, ..sess };
     store::save_session(&new_sess)?;
     *st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(new_sess);
-    let _ = st.session_tx.send(*st.session_tx.borrow() + 1);
+    // 同 login：borrow 守卫必须先释放再 send，否则同线程读写锁自死锁
+    let ver = *st.session_tx.borrow() + 1;
+    let _ = st.session_tx.send(ver);
     eprintln!("[ws] 已同名重新注册设备，使用新 device_id 重连");
     Ok(())
 }
@@ -658,6 +682,16 @@ pub async fn ws_loop(app: tauri::AppHandle) {
             let _ = rx.changed().await;
             continue;
         };
+        // 两步式登录时期可能残留 device_id 为空的坏会话：
+        // 用它连接必被服务端拒绝（E 帧循环），直接视为未登录等待重新登录
+        if sess.device_id.is_empty() {
+            eprintln!("[ws] 会话缺少 device_id（坏会话），等待重新登录");
+            let _ = app.emit("ws-error", "本地会话不完整，请重新登录".to_string());
+            let st = app.state::<AppState>();
+            let mut rx = st.session_tx.subscribe();
+            let _ = rx.changed().await;
+            continue;
+        }
         set_connected(&app, true);
         let _ = app.emit("ws-status", "connected");
         let outcome = run_connection(&app, &sess).await;
@@ -699,6 +733,24 @@ pub async fn ws_loop(app: tauri::AppHandle) {
                     continue;
                 }
                 tokio::time::sleep(Duration::from_secs(60)).await;
+                continue;
+            }
+            // E 帧自愈（带内重注册）连续失败（设备名被占/凭据失效等）：
+            // 有限次后退避并最终停下等用户重新登录，绝不无限 400 循环
+            if msg.starts_with("E帧重注册失败") {
+                e_streak += 1;
+                if e_streak >= 3 {
+                    eprintln!("[ws] E 帧自愈连续 {e_streak} 次失败，停止自动重试，等待重新登录");
+                    let _ = app.emit("ws-error",
+                        format!("自动恢复连续失败（{msg}），请在应用内重新登录"));
+                    let st = app.state::<AppState>();
+                    let mut rx = st.session_tx.subscribe();
+                    let _ = rx.changed().await;
+                    e_streak = 0;
+                    continue;
+                }
+                tokio::time::sleep(Duration::from_secs(backoff)).await;
+                backoff = (backoff * 2).min(60);
                 continue;
             }
         }
@@ -774,10 +826,15 @@ async fn run_connection(app: &tauri::AppHandle, sess: &Session) -> Result<()> {
                                     // ws 短暂返回 E（REST 仍有效）——同名重注册立即恢复。
                                     // 直接自愈而非要求用户重新登录
                                     eprintln!("[ws] 收到 E 帧，尝试同名重注册自愈");
-                                    if let Err(e) = re_register(&app).await {
-                                        eprintln!("[ws] 重注册失败: {e}");
+                                    match re_register(&app).await {
+                                        Ok(()) => break Err(anyhow!("E 帧后重注册，重连中")),
+                                        Err(e) => {
+                                            // 失败也必须跳出：否则服务端持续回 E 会形成
+                                            // 「E → 重注册 400 → 重连 → E」死循环
+                                            eprintln!("[ws] 重注册失败: {e}");
+                                            break Err(anyhow!("E帧重注册失败: {e}"));
+                                        }
                                     }
-                                    break Err(anyhow!("E 帧后重注册，重连中"));
                                 }
                                 "A" => break Err(anyhow!("设备被另一会话接管(A)，请更换设备名")),
                                 other => { let _ = app.emit("ws-log", other.to_string()); }

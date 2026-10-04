@@ -71,8 +71,8 @@ pub struct Settings {
     pub send_user: String,
     #[serde(default = "default_true")]
     pub toast: bool,
-    #[serde(default)]
-    pub notify_sound: bool,
+    // notify_sound 已移除（v0.14.2）：假开关（无使用点）；旧 settings.json
+    // 里残留的该字段由 serde 忽略未知字段的默认行为兼容
     /// 免打扰时段（HH:MM）；紧急消息(priority=2)不受限
     #[serde(default)]
     pub quiet_enabled: bool,
@@ -91,7 +91,6 @@ impl Default for Settings {
             send_token: String::new(),
             send_user: String::new(),
             toast: true,
-            notify_sound: false,
             quiet_enabled: false,
             quiet_start: String::new(),
             quiet_end: String::new(),

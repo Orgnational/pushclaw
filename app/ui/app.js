@@ -88,7 +88,6 @@ async function loadHistory() {
     list.innerHTML = `<div class="empty">
       <svg class="claw" viewBox="0 0 24 24"><g fill="currentColor"><path d="M5 3.2 C5.9 6 6.6 10.5 6.2 15.5 C6 18 5.4 20 4.9 20.8 C4.3 19.6 3.6 16.5 3.7 12.6 C3.8 8.6 4.4 5.2 5 3.2 Z"/><path d="M12 2 C13.1 5.4 13.9 10.6 13.5 16.4 C13.3 19.4 12.6 21.8 12 22.8 C11.3 21.4 10.5 17.7 10.6 13.2 C10.7 8.5 11.4 4.5 12 2 Z"/><path d="M19 3.2 C19.6 5.2 20.2 8.6 20.3 12.6 C20.4 16.5 19.7 19.6 19.1 20.8 C18.6 20 17.9 18 17.8 15.5 C17.4 10.5 18.1 6 19 3.2 Z"/></g></svg>
       <p>${state.view === "archive" ? "归档是空的" : "还没有消息"}</p>
-      <p class="small">${state.view === "archive" ? "在消息页选中后归档的内容会出现在这里" : "从发送端 po-send 发一条试试"}</p>
     </div>`;
   } else {
     list.innerHTML = msgs.map((m) => {
@@ -147,7 +146,7 @@ function openDetail(m) {
   else { url.classList.add("hidden"); }
   const ack = $("detail-ack");
   if (m.priority === 2 && m.receipt && !m.acked) {
-    ack.classList.remove("hidden"); ack.disabled = false; ack.textContent = "确认（全设备静默）";
+    ack.classList.remove("hidden"); ack.disabled = false; ack.textContent = "确认";
   } else { ack.classList.add("hidden"); }
   $("detail-archive").textContent = m.archived ? "恢复到消息" : "归档";
   $("detail-note").dataset.id = m.id;
@@ -181,36 +180,31 @@ $("login-form").addEventListener("submit", async (e) => {
   const btn = $("login-btn"), errEl = $("login-error");
   errEl.classList.add("hidden");
   btn.disabled = true; btn.textContent = "登录中…";
+  document.title = "PC:[1]invoke已发出";
   try {
-    // 30s 超时保护：即使 IPC 异常也不会永久卡在登录中
-    await Promise.race([
-      invoke("login", {
-        email: $("f-email").value.trim(),
-        password: $("f-password").value,
-        twofa: $("f-twofa").value.trim() || null,
-      }),
-      new Promise((_, rej) => setTimeout(
-        () => rej(new Error("登录超时（30 秒）——请检查网络后重试")), 30000)),
-    ]);
-    // 第二步：注册设备（独立命令，失败不影响登录态，可单独重试）
-    let registered = false;
-    try {
-      await invoke("register_device", { deviceName: $("f-device").value.trim() });
-      registered = true;
-    } catch (regErr) {
-      errEl.textContent = "登录成功，但设备注册失败：" + regErr + "（可修正设备名后重试）";
-      errEl.classList.remove("hidden");
-      btn.disabled = false; btn.textContent = "重试注册设备";
-      return;   // 停在登录页：设备没注册成功就不进主界面（避免半配置状态）
-    }
+    // 不设 UI 超时：Rust 侧每请求 30s 超时 × 有界重试，invoke 必然返回。
+    // UI 层超时只会制造"前端已放弃、后端注册成功"的状态分裂（假超时真登录）
+    await invoke("login", {
+      email: $("f-email").value.trim(),
+      password: $("f-password").value,
+      twofa: $("f-twofa").value.trim() || null,
+      deviceName: $("f-device").value.trim(),
+      sendToken: $("f-token").value.trim() || null,
+    });
+    document.title = "PC:[2]回执到达";
     await refreshStatus();
+    document.title = "PC:[3]状态刷新完成";
     await loadHistory();
   } catch (err) {
+    document.title = "PC:[E]" + String(err).slice(0, 50);
     errEl.textContent = err === "2fa_required"
       ? "该账号开启了两步验证，请填写验证码后重试" : String(err);
     errEl.classList.remove("hidden");
+    // 兜底：报错路径也可能已部分成功（如重试期间注册完成）——以真实会话状态定视图
+    await refreshStatus();
   } finally {
-    btn.disabled = false; btn.textContent = "登录并注册本机";
+    document.title = "PC:[4]按钮恢复";
+    btn.disabled = false; btn.textContent = "登录";
   }
 });
 
@@ -293,7 +287,6 @@ async function loadSettings() {
   const emailEl = $("set-email"); if (emailEl) emailEl.textContent = st.email || "-";
   $("set-version").textContent = "v" + st.version;
   $("set-toast").checked = st.toast;
-  $("set-sound").checked = st.notify_sound;
   $("set-quiet").checked = st.quiet_enabled;
   $("set-quiet-start").value = st.quiet_start || "23:00";
   $("set-quiet-end").value = st.quiet_end || "08:00";
@@ -321,7 +314,6 @@ $("set-save").addEventListener("click", async () => {
       send_token: $("set-token").value.trim(),
       send_user: $("set-user").value.trim(),
       toast: $("set-toast").checked,
-      notify_sound: $("set-sound").checked,
       quiet_enabled: $("set-quiet").checked,
       quiet_start: $("set-quiet-start").value || "23:00",
       quiet_end: $("set-quiet-end").value || "08:00",
@@ -472,11 +464,8 @@ $("logout-btn").addEventListener("click", async () => {
   btn.title = "退出登录";
   try {
     console.log("[logout] 确认态，调用 logout 命令");
-    // 5 秒超时保护：即使 IPC 异常 UI 也不会永久冻结
-    await Promise.race([
-      invoke("logout"),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("退出超时")), 5000)),
-    ]);
+    // logout 是纯本地操作（清内存会话 + 删文件），无网络调用；UI 超时只会制造假失败
+    await invoke("logout");
     setSelecting(false);
     $("emergency-bar").classList.add("hidden");
     await refreshStatus();
@@ -548,6 +537,7 @@ $("emergency-bar").addEventListener("click", async (e) => {
 // Rust 侧事件
 // 双保险：登录命令返回链路异常时，Rust 侧主动推送的事件也能切换视图
 listen("login-success", async () => {
+  document.title = "PC:[EV]login-success事件到达";
   $("login-view").classList.add("hidden");
   $("main-view").classList.remove("hidden");
   await refreshStatus();
