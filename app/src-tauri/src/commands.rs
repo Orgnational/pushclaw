@@ -38,8 +38,8 @@ pub async fn get_status(state: tauri::State<'_, AppState>) -> Result<Status, Str
 }
 
 #[tauri::command]
-pub async fn login(
-    app: tauri::AppHandle,
+pub async fn login<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     state: tauri::State<'_, AppState>,
     email: String,
     password: String,
