@@ -267,6 +267,14 @@ async function doSend() {
   btn.disabled = false;
 }
 
+// 发送按钮（历史事故：v0.11.0 发送视图上线起此绑定缺失——按钮存在、
+// 处理函数存在、但从未连接，点击无任何反应；防线见 tests/test_id_consistency.mjs 死按钮扫描）
+$("snd-send").addEventListener("click", doSend);
+// Ctrl/Cmd+Enter 快捷发送（正文 textarea 内）
+$("snd-message").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") doSend();
+});
+
 // 设置视图切换
 function showSettings(on) {
   ["search", "priority-chips"].forEach((id) => $(id).parentElement.classList.toggle("hidden", on));

@@ -47,4 +47,20 @@ if (unregistered.length) {
   console.log(`[PASS] 前端调用的 ${invoked.size} 个命令全部已注册`);
 }
 
+// 死按钮扫描（2026-10-19 事故：snd-send 自 v0.11.0 起从未绑定——
+// 按钮存在、处理函数存在、但没连接，点击无反应且无任何报错）：
+// index.html 每个 <button id=X>（type=submit 走表单提交的除外）
+// 必须在 app.js 中被引用（addEventListener 或任意 $() 使用）
+const buttons = [...html.matchAll(/<button\s+id="([^"]+)"([^>]*)>/g)]
+  .map((m) => ({ id: m[1], attrs: m[2] }))
+  .filter((b) => !/type="submit"/.test(b.attrs));
+const deadButtons = buttons.filter((b) => !referenced.has(b.id));
+if (deadButtons.length) {
+  console.error(`[FAIL] 未绑定的死按钮 ${deadButtons.length} 个:`);
+  for (const b of deadButtons) console.error(`  - ${b.id}（HTML 有按钮但 app.js 无任何引用/监听）`);
+  failed += deadButtons.length;
+} else {
+  console.log(`[PASS] ${buttons.length} 个按钮全部有 JS 绑定`);
+}
+
 process.exit(failed ? 1 : 0);
