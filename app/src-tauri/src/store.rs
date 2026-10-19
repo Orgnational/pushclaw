@@ -298,14 +298,18 @@ pub fn query(
     archived: bool,
 ) -> Vec<Msg> {
     let like = search.map(|q| format!("%{q}%"));
-    let sql = "SELECT id, umid, title, message, html, priority, url, url_title,
-                      app, date, acked, receipt, archived
-               FROM messages
-               WHERE archived = ?1
-                 AND (?2 IS NULL OR priority = ?2)
-                 AND (?3 IS NULL OR title LIKE ?3 OR message LIKE ?3 OR app LIKE ?3)
-               ORDER BY date DESC, id DESC LIMIT ?4";
-    let mut stmt = match conn.prepare(sql) {
+    // 列清单必须与 row_to_msg 的 15 列读取一致（历史事故：v0.12.0 加 read 列时
+    // 只改了 row_to_msg 没改此 SQL，get(14) 越界 → 每行被 filter_map 静默丢弃
+    // → 消息列表永远为空，而 mock 测试测不出真实 SQL 路径）
+    let sql = format!(
+        "SELECT {MSG_COLS}
+         FROM messages
+         WHERE archived = ?1
+           AND (?2 IS NULL OR priority = ?2)
+           AND (?3 IS NULL OR title LIKE ?3 OR message LIKE ?3 OR app LIKE ?3)
+         ORDER BY date DESC, id DESC LIMIT ?4"
+    );
+    let mut stmt = match conn.prepare(sql.as_str()) {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
