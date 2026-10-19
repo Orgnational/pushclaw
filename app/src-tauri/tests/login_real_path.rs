@@ -117,8 +117,10 @@ async fn real_login_without_token_preserves_existing_one() {
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
     std::env::set_var("HOME", &home);
-    std::env::set_var("PUSHOVER_API_BASE", "http://127.0.0.1:18156/1");
-    spawn_mock(18156);
+    // 并行调度下本测试可能先执行——必须同样先设 API_BASE，
+    // 否则 OnceLock 固化为默认生产地址，假凭据会打到真实服务器
+    std::env::set_var("PUSHOVER_API_BASE", "http://127.0.0.1:18155/1");
+    spawn_mock(18155);
 
     let app = tauri::test::mock_app();
     app.manage(AppState {
