@@ -50,13 +50,18 @@ for p in FILES:
         failures.append(f"[B] {p}:{line} .borrow() 作为函数实参（读锁守卫存活至语句末）→ 拆成两条语句")
 
 # --- C: guard 绑定后 await 之后再引用（粗筛，人工复核） ---
-ALLOWLIST = [  # 已人工核清为"await 后重新拿锁"的安全点（修 bug 时更新）
-    ("app/src-tauri/src/commands.rs", 116),   # get_message：guard 存活期内无 await，直接构造返回
-    ("app/src-tauri/src/commands.rs", 129),   # delete_messages：同上
-    ("app/src-tauri/src/commands.rs", 143),   # archive_messages：同上
-    ("app/src-tauri/src/commands.rs", 319),   # mark_read：db guard 在独立块内释放，await 在块外
-    ("app/src-tauri/src/commands.rs", 331),   # mark_all_read：同上
-    ("app/src-tauri/src/pushover.rs", 652),   # re_register：session guard 块内 clone 释放；await 后是重新拿锁
+# 人工核清清单：内容定位（行号会随编辑漂移，不可用行号）
+ALLOWLIST_CONTENT = [
+    # get_message/delete/archive/history：guard 存活期内无 await，直接构造返回
+    "history(state: tauri::State",
+    "get_message(state: tauri::State",
+    "delete_messages(",
+    "archive_messages(",
+    # mark_read/mark_all_read：db guard 在独立块内释放，await 在块外
+    "mark_read",
+    "mark_all_read",
+    # re_register：session guard 块内 clone 释放；await 后是重新拿锁
+    "re_register",
 ]
 for p in FILES:
     lines = open(p).read().splitlines()
@@ -72,7 +77,9 @@ for p in FILES:
         await_lines = [j for j, s in enumerate(scope, 1) if ".await" in s]
         ref_lines = [j for j, s in enumerate(scope, 1) if re.search(rf"\b{name}\b", s)]
         if await_lines and ref_lines and max(ref_lines) > min(await_lines):
-            if (p, i + 1) in ALLOWLIST:
+            # 该 guard 绑定行向上的最近函数签名行决定归属
+            sig = next((l2.strip() for l2 in reversed(lines[:i]) if "fn " in l2 or "async fn" in l2), "")
+            if any(k in sig for k in ALLOWLIST_CONTENT):
                 continue
             failures.append(
                 f"[C?] {p}:{i+1} guard `{name}` 疑似跨 await 持有（await@+{min(await_lines)}，"

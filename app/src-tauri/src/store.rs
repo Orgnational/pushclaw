@@ -25,8 +25,12 @@ CREATE TABLE IF NOT EXISTS messages (
     icon        TEXT,
     read        INTEGER DEFAULT 1
 );
-CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date);
 "#;
+
+/// 索引必须在列迁移之后创建：真正的老库可能缺 date 列，
+/// 先建索引会 no such column 崩掉 open()（store_full 测试实证）
+pub const SCHEMA_INDEX: &str =
+    "CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date)";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Session {
@@ -165,6 +169,16 @@ pub fn open(path: &PathBuf) -> rusqlite::Result<Connection> {
         // 存量消息默认已读：只对新到消息做未读提醒
         conn.execute_batch("ALTER TABLE messages ADD COLUMN read INTEGER DEFAULT 1")?;
     }
+    // 极老库可能连 date 都缺（早于首版正式发布的表结构）——补列后再建索引
+    let has_date: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='date'",
+            [], |r| r.get(0),
+        ).unwrap_or(0);
+    if has_date == 0 {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN date INTEGER")?;
+    }
+    conn.execute_batch(SCHEMA_INDEX)?;
     Ok(conn)
 }
 

@@ -256,11 +256,10 @@ pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<AppSettin
         email,
     })
     .map(|mut v| {
-        let t = if v.send_token.is_empty() { "<空>".to_string() }
-                else { format!("尾4 {}", &v.send_token[v.send_token.len()-4..]) };
-        let u = if v.send_user.is_empty() { "<空>".to_string() }
-                else { format!("尾4 {}", &v.send_user[v.send_user.len()-4..]) };
-        eprintln!("[settings] get_settings 返回 token={t} user={u}");
+        let tail = |s: &str| if s.is_empty() { "<空>".to_string() }
+            else { format!("尾4 {}", &s[s.len().saturating_sub(4)..]) };
+        eprintln!("[settings] get_settings 返回 token={} user={}",
+            tail(&v.send_token), tail(&v.send_user));
         v
     })
 }
@@ -314,7 +313,7 @@ fn chrono_now() -> String {
 
 /// 标记单条已读（本地 + 广播其它设备）
 #[tauri::command]
-pub async fn mark_read(app: tauri::AppHandle, state: tauri::State<'_, AppState>, umid: String) -> Result<(), String> {
+pub async fn mark_read<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: tauri::State<'_, AppState>, umid: String) -> Result<(), String> {
     {
         let db = state.db.lock().unwrap_or_else(|p| p.into_inner());
         store::mark_read_by_umids(&db, &[umid.clone()]);
@@ -326,7 +325,7 @@ pub async fn mark_read(app: tauri::AppHandle, state: tauri::State<'_, AppState>,
 
 /// 全部已读（本地 + 广播其它设备）
 #[tauri::command]
-pub async fn mark_all_read(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn mark_all_read<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let umids = {
         let db = state.db.lock().unwrap_or_else(|p| p.into_inner());
         db.execute("UPDATE messages SET read=1 WHERE archived=0 AND read=0", [])
@@ -501,7 +500,7 @@ pub async fn register_device(
 }
 
 #[tauri::command]
-pub async fn sync_now(app: tauri::AppHandle) -> Result<usize, String> {
+pub async fn sync_now<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<usize, String> {
     pushover::fetch_and_store(app)
         .await
         .map_err(|e| e.to_string())

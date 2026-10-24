@@ -20,7 +20,7 @@ pub struct AppState {
 }
 
 /// 显示并聚焦主窗口
-pub fn show_main(app: &tauri::AppHandle) {
+pub fn show_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();

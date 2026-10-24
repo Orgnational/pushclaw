@@ -515,7 +515,7 @@ fn strip_html(s: &str) -> String {
 }
 
 /// 拉取一次消息并入库；对新消息发窗口事件 + 系统通知。返回新入库条数。
-pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
+pub async fn fetch_and_store<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<usize> {
     let sess = {
         let st = app.state::<AppState>();
         let guard = st.session.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -624,7 +624,7 @@ pub async fn fetch_and_store(app: tauri::AppHandle) -> Result<usize> {
 
 /// 广播已读信令：静默自消息（priority=-2，TTL 5 分钟），
 /// 其它设备拉取时按 umid 应用已读态。
-pub async fn broadcast_read_sync(app: &tauri::AppHandle, umids: &[String]) -> Result<()> {
+pub async fn broadcast_read_sync<R: tauri::Runtime>(app: &tauri::AppHandle<R>, umids: &[String]) -> Result<()> {
     if umids.is_empty() { return Ok(()); }
     let (token, user) = {
         let st = app.state::<AppState>();
