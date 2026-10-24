@@ -79,15 +79,20 @@ cargo build --release --bin pushclaw-cli   # CLI（app/src-tauri/ 下）
 
 ## ✅ 测试防线
 
+一键关卡：`bash tests/run_all.sh`（发版全量）/ `--fast`（日常迭代）——规则与覆盖矩阵见 [docs/TESTING.md](docs/TESTING.md)。
+
 | 防线 | 拦截的事故类型 |
 |---|---|
-| `tests/test_id_consistency.mjs` | HTML↔JS 元素、invoke↔命令注册不一致（首跑即捕获发送视图未注册事故） |
-| `tests/settings_fields.rs` | 结构体漏字段（序列化方向） |
-| `tests/save_settings_schema.rs` | serde 必填字段拒绝保存（反序列化方向） |
+| `tests/test_lock_discipline.py` | 锁纪律（同语句多重锁/跨 await 持锁——两次真实死锁的根因模式） |
+| `tests/test_id_consistency.mjs` | HTML↔JS 元素、invoke↔命令注册、死按钮（各首跑即捕获真事故） |
+| `tests/login_real_path.rs` / `send_real_path.rs` / `commands_real_path.rs` | **命令真路径**：mock 运行时直调真命令，断言真实落盘副作用（mock-only≠验收） |
+| `tests/store_full.rs` / `store_query.rs` | 存储层真 SQLite 全函数（含列数漂移——列表恒空事故的根因模式） |
+| `tests/fetch_store_real.rs` | 接收核心全管线（拉取→入库→已读信令→服务端清理） |
+| `tests/settings_fields.rs` / `save_settings_schema.rs` | serde 双向字段完整性 |
 | `tests/login_flow.rs` / `send_flow.rs` | 协议层卡死、multipart 丢失（内嵌 mock） |
-| `tests/test_ui_logic.mjs` | 前端交互逻辑回归（jsdom 13 项） |
+| `tests/test_ui_*.mjs` ×5 | 前端点击链（登录/设置/发送/退出/批量操作——含死按钮事故回归） |
 
-开发流程见 [CONTRIBUTING.md](CONTRIBUTING.md)：分支 → 四阶段验证 → 合并 → tag 发布。
+开发流程见 [CONTRIBUTING.md](CONTRIBUTING.md)：分支 → run_all 关卡 → 合并 → tag 发布。
 
 ## 🏷 版本发布（自动化）
 

@@ -12,13 +12,14 @@ main                ← 始终可发布；只接受经过验证的合并
 
 1. **开分支**：`git checkout -b feat/<短名>`（修复用 `fix/`，测试用 `test/`）
 2. **在分支上开发 + 提交**，禁止直推 main
-3. **合并前跑四阶段验证关卡**（全部通过才可合并）：
+3. **合并前跑统一验证关卡**（全部通过才可合并）：
    ```bash
-   cd app/src-tauri && cargo check && cargo test        # ① 构建 ② Rust 测试
-   cd .. && node ../tests/test_id_consistency.mjs        # ③ 一致性扫描
-   /usr/local/bin/node ../tests/test_ui_logic.mjs        #    jsdom 交互
-   npx tauri build --bundles app                         # ④ release 构建
+   bash tests/run_all.sh          # 五段全量：锁纪律→一致性+死按钮→点击链×5→Rust 全量→release
+   bash tests/run_all.sh --fast   # 日常迭代（跳过 release 编译）
    ```
+   关卡规则与覆盖矩阵详见 [docs/TESTING.md](docs/TESTING.md)——
+   **mock-only ≠ 验收**：新命令必须真路径测试，新按钮必须点击链测试，
+   存储函数必须真 SQLite 测试。
 4. **合并**：`git checkout main && git merge feat/xxx`（保留分支历史用 --no-ff）
 5. **发版**：合并后打 tag `git tag vX.Y.Z && git push origin main --tags`
 6. **tag 即发布**：CI 自动构建双平台 Release——tag 必须指向验证通过的合并点
