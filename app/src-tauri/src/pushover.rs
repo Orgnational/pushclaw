@@ -528,9 +528,8 @@ pub async fn fetch_and_store<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Res
         Err(e) => { eprintln!("[pushover] 拉取失败: {e}"); return Err(e); }
     };
     eprintln!("[pushover] 拉取到 {} 条", msgs.len());
-    if msgs.is_empty() {
-        return Ok(0);
-    }
+    // 0 条消息不再提前返回：继续走到底部收尾（emit "do-sync"），
+    // 保证托盘/手动同步拉到 0 条新消息时前端列表同样刷新（do-sync 死监听修复）。
     // 入库后清理服务端队列：取本次最大 id，之后每次只增量传输
     let highest = msgs.iter().filter_map(|m| match m.get("id") {
         Some(Value::Number(n)) => n.as_i64(),
@@ -619,6 +618,10 @@ pub async fn fetch_and_store<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Res
             .body(body)
             .show();
     }
+    // 收尾（含 0 新消息路径）：通知前端刷新列表。此前托盘 sync / sync_now
+    // 拉到 0 条新消息时无任何事件，前端 listen("do-sync")（app.js）永不触发。
+    // 锁纪律：各锁守卫均已离开作用域，与上方 read-sync 同为不持锁 emit。
+    let _ = app.emit("do-sync", ());
     Ok(n)
 }
 

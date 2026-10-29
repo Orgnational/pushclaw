@@ -8,8 +8,9 @@ use pushclaw_core::{store, AppState};
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{Listener, Manager};
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -85,10 +86,20 @@ async fn fetch_and_store_full_pipeline() {
         assert_eq!(store::unread_count(&db), 1);
     }
 
+    // 监听 do-sync 事件（缺陷 do-sync-emit 回归守卫）：每次同步收尾必须发射一次，
+    // 含 0 新消息路径——否则托盘/手动同步拉到 0 条时前端列表不刷新
+    let do_sync_count = Arc::new(AtomicUsize::new(0));
+    let dc2 = do_sync_count.clone();
+    app.listen("do-sync", move |_| {
+        dc2.fetch_add(1, Ordering::SeqCst);
+    });
+
     // 真执行接收管线
     let n = pushclaw_core::pushover::fetch_and_store(app.handle().clone())
         .await.expect("fetch_and_store 应成功");
     assert_eq!(n, 1, "应新入库 1 条普通消息（信令不入库）");
+    assert_eq!(do_sync_count.load(Ordering::SeqCst), 1,
+        "首次同步（1 条新消息）收尾应恰好发射 1 次 do-sync");
 
     {
         let st = app.state::<AppState>();
@@ -110,6 +121,15 @@ async fn fetch_and_store_full_pipeline() {
     assert!(hits.lock().unwrap().iter().any(|h| h.contains("update_highest_message")),
         "应 POST update_highest_message 清理服务端队列");
     assert!(hits.lock().unwrap().iter().any(|h| h.contains("GET /1/messages.json")));
+
+    // ⓐ 0 新消息路径：再次拉取（服务端队列已清理，mock 仍返回同两条——
+    //    9001 重复入库被忽略、9002 是信令不入库）→ 新入库 0 条，
+    //    但收尾仍必须发射 do-sync（缺陷 do-sync-emit 的核心不变量）
+    let n2 = pushclaw_core::pushover::fetch_and_store(app.handle().clone())
+        .await.expect("第二次 fetch_and_store 应成功");
+    assert_eq!(n2, 0, "第二次拉取应无新消息");
+    assert_eq!(do_sync_count.load(Ordering::SeqCst), 2,
+        "0 新消息同步收尾也必须发射 do-sync（否则前端列表不刷新）");
 
     let _ = std::fs::remove_dir_all(&home);
 }

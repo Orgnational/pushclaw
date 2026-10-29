@@ -9,6 +9,7 @@ const mainView = $("main-view");
 // ---------- 状态 ----------
 const state = {
   view: "inbox",        // inbox | archive
+  tab: "inbox",         // 当前激活 tab（inbox|archive|send|settings）：紧急横幅显隐的依据
   priority: null,       // null | 1 | 2
   selecting: false,
   selected: new Set(),
@@ -32,27 +33,44 @@ window.addEventListener("error", (e) => report(e.message));
 
 const iconCache = {};
 function ico(m) {
-  if (!m.icon || !iconCache[m.icon]) return "";   // 缓存命中才渲染 img（防空 src 重载风暴/布局抖动）
+  if (!m.icon || !iconCache[m.icon]) return "";   // 缓存命中才渲染 img：img 必有 src（防空 src 重载风暴/布局抖动）
   return `<img class="app-ico" data-icon="${esc(m.icon)}" src="${iconCache[m.icon]}" alt="">`;
 }
 
 const failedIcons = new Set();
-async function fillIcons() {
-  const need = [...new Set(
-    [...document.querySelectorAll("img.app-ico[data-icon]")]
-      .filter((im) => !iconCache[im.dataset.icon])
-      .map((im) => im.dataset.icon))]
-    .filter((name) => !failedIcons.has(name));
+// 数据驱动（缺陷 icon-cache）：ico() 缓存未命中时不渲染 img，旧实现从 DOM img 反推待取图标，
+// 与「命中才渲染」互斥（need 恒空、get_icon 不可达）。改为由 loadHistory 传入 msgs，按消息
+// icon 字段收集未缓存且未失败的名字 → get_icon → 成功入缓存后补插 img（创建时必有 src）。
+async function fillIcons(msgs) {
+  const need = [...new Set(msgs.map((m) => m.icon).filter(Boolean))]
+    .filter((name) => !failedIcons.has(name) && !iconCache[name]);
   await Promise.all(need.map(async (name) => {
     const url = await invoke("get_icon", { name });
-    if (url) { iconCache[name] = url; applyIcon(name); }
+    if (url) { iconCache[name] = url; applyIcon(name); addIconImgs(msgs, name); }
     else { failedIcons.add(name); }   // 下载失败的图标本会话不再重试（防布局抖动循环）
   }));
 }
 
 function applyIcon(name) {
-  document.querySelectorAll(`img.app-ico[data-icon="${CSS.escape(name)}"]`)
-    .forEach((im) => { im.src = iconCache[name]; });
+  // 不用 CSS.escape 选择器（jsdom 无 CSS 全局）：按 dataset 精确匹配，语义等价
+  document.querySelectorAll("img.app-ico").forEach((im) => {
+    if (im.dataset.icon === name) im.src = iconCache[name];
+  });
+}
+
+// 图标取回成功时列表已按「缓存未命中」渲染（无 img）：向引用该图标的每张卡片补插 img。
+// 仅在缓存命中后创建（src 必有值）；卡片已有该图标 img 则跳过（并发 get_icon 去重防重复插入）。
+function addIconImgs(msgs, name) {
+  msgs.filter((m) => m.icon === name).forEach((m) => {
+    const top = document.getElementById(`msg-${m.id}`)?.querySelector(".m-top");
+    if (!top || [...top.querySelectorAll("img.app-ico")].some((im) => im.dataset.icon === name)) return;
+    const im = document.createElement("img");
+    im.className = "app-ico";
+    im.dataset.icon = name;
+    im.src = iconCache[name];
+    im.alt = "";
+    (top.querySelector(".flag") || top.querySelector(".t"))?.before(im);
+  });
 }
 
 function esc(s) {
@@ -73,6 +91,9 @@ async function refreshEmergencyBar() {
       <span class="emg-text">${esc(m.title || m.app || "-")} — ${esc(m.message.slice(0, 60))}</span>
       <button class="danger emg-ack" data-receipt="${esc(m.receipt)}">确认</button>
     </div>`).join("");
+  // 横幅仅在收件箱 tab 弹出：发送/设置视图激活时保持隐藏，归档 tab 不弹。
+  // 本次刷新只更新内容，不得覆盖 tab 切换时对共享元素算好的显隐（view-toggle 防线）
+  bar.classList.toggle("hidden", state.tab !== "inbox");
 }
 
 // ---------- 列表 ----------
@@ -97,8 +118,10 @@ async function loadHistory() {
       const sel = state.selected.has(m.id);
       const cb = state.selecting ? `<span class="cb"></span>` : "";
       const pcls = m.priority === 2 ? "p2" : m.priority === 1 ? "p1" : "";
+      // id="msg-<id>"：navigate-latest（Dock/通知点击 Reopen）滚动定位目标；
+      // data-id 另被选择模式/点击委托依赖，两者并存不可互替。
       return `<div class="m ${pcls} ${state.selecting ? "selectable" : ""} ${sel ? "sel" : ""}"
-                   data-id="${m.id}">
+                   id="msg-${m.id}" data-id="${m.id}">
         <div class="m-top">${cb}${ico(m)}${flag}<span class="t">${esc(title)}</span>
           ${m.read ? "" : '<span class="unread-dot" title="未读"></span>'}
           <time>${fmtTime(m.date)}</time></div>
@@ -108,7 +131,7 @@ async function loadHistory() {
   }
   const scope = state.view === "archive" ? "归档" : "";
   $("count-label").textContent = `${scope}显示 ${msgs.length} 条`;
-  fillIcons().catch(console.error);
+  fillIcons(msgs).catch(console.error);
   refreshEmergencyBar().catch(console.error);
 }
 
@@ -203,18 +226,37 @@ $("login-form").addEventListener("submit", async (e) => {
   }
 });
 
+// ---------- 共享元素显隐（每个 tab 目标态只在此计算一次） ----------
+// .toolbar（搜索+优先级筛选）、#list、紧急横幅为消息/归档与设置/发送视图共享：
+// 设置/发送视图激活时三者必须隐藏；消息/归档恢复 .toolbar 与 #list；
+// 横幅仅在收件箱 tab 且有未确认内容时显示。showSend/showSettings 不得再触碰三者，
+// 否则 tab 处理器中后调用者会覆盖先调用者的结果（历史缺陷 view-toggle）。
+function applySharedElems(target) {
+  const overlay = target === "send" || target === "settings";
+  document.querySelector(".toolbar").classList.toggle("hidden", overlay);
+  $("list").classList.toggle("hidden", overlay);
+  $("emergency-bar").classList.toggle("hidden",
+    target !== "inbox" || $("emergency-bar").innerHTML === "");
+}
+
 // 标签页
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
   t.classList.add("active");
-  const isSettings = t.dataset.view === "settings";
-  const isSend = t.dataset.view === "send";
-  state.view = isSettings || isSend ? "inbox" : t.dataset.view;
+  const target = t.dataset.view;         // inbox | archive | send | settings
+  const isSettings = target === "settings";
+  const isSend = target === "send";
+  state.tab = target;
+  state.view = isSettings || isSend ? "inbox" : target;
+  applySharedElems(target);
   showSettings(isSettings);
   showSend(isSend);
+  // 任何 tab 切换都退出多选并清空选中（缺陷 batchbar-persist）：#batch-bar 不在
+  // applySharedElems 管辖的共享元素之列，若清空仅限消息/归档 tab，切到设置/发送后
+  // 批量栏仍悬浮可操作，会对不可见列表的旧选中项执行批量归档/删除。
+  state.selected.clear();
+  setSelecting(false);
   if (!isSettings && !isSend) {
-    state.selected.clear();
-    setSelecting(false);
     loadHistory();
   }
 }));
@@ -222,9 +264,7 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 // 发送视图
 let deviceOptions = null;
 function showSend(on) {
-  ["search"].forEach((id) => $(id).parentElement.classList.toggle("hidden", on));
-  $("list").classList.toggle("hidden", on);
-  $("emergency-bar").classList.toggle("hidden", on || $("emergency-bar").innerHTML === "");
+  // 共享元素（.toolbar/#list/紧急横幅）显隐由 applySharedElems 统一计算，此处只管视图本身
   $("send-view").classList.toggle("hidden", !on);
   if (on && deviceOptions === null) {
     invoke("list_devices").then((devs) => {
@@ -257,8 +297,11 @@ async function doSend() {
       priority: Number($("snd-priority").value),
       device: $("snd-device").value || null,
       url: $("snd-url").value.trim() || null,
-      image_b64: imageB64,
-      image_name: imageName,
+      // Tauri v2 命令参数默认 camelCase（commands.rs:427-428 的 image_b64/image_name
+      // 对应 IPC 键 imageB64/imageName，与 login 的 deviceName/sendToken 约定一致）：
+      // snake_case 键会被静默丢弃为 None → 图片附件静默丢失（缺陷 send-image-keys）
+      imageB64: imageB64,
+      imageName: imageName,
     });
     res.textContent = `✓ 已发送 ${new Date().toLocaleTimeString()}`;
     $("snd-message").value = "";
@@ -277,9 +320,7 @@ $("snd-message").addEventListener("keydown", (e) => {
 
 // 设置视图切换
 function showSettings(on) {
-  ["search", "priority-chips"].forEach((id) => $(id).parentElement.classList.toggle("hidden", on));
-  $("list").classList.toggle("hidden", on);
-  $("emergency-bar").classList.toggle("hidden", on || $("emergency-bar").innerHTML === "");
+  // 共享元素显隐由 applySharedElems 统一计算，此处只管视图本身
   $("settings-view").classList.toggle("hidden", !on);
   if (on) loadSettings();
 }
@@ -293,6 +334,10 @@ async function loadSettings() {
   $("set-quiet").checked = st.quiet_enabled;
   $("set-quiet-start").value = st.quiet_start || "23:00";
   $("set-quiet-end").value = st.quiet_end || "08:00";
+  // 载入同步：quiet-row 透明度须随 quiet_enabled 落位，否则关闭态载入时段行仍全亮，
+  // 与手动切换后的 0.4 弱化观感不一致（缺陷 quiet-opacity）。
+  // 须在下方 muted-list 空记录的提前 return 之前执行，保证所有载入路径都同步。
+  applyQuietOpacity(st.quiet_enabled);
   $("set-token").value = st.send_token;
   $("set-user").value = st.send_user;
   const muted = new Set(st.muted_apps);
@@ -327,8 +372,14 @@ $("set-save").addEventListener("click", async () => {
   setTimeout(() => { btn.textContent = "保存"; btn.disabled = false; }, 2000);
 });
 
+// quiet-row 透明度唯一赋值点：免打扰开启全亮（1）、关闭弱化（0.4）。
+// 载入同步（loadSettings）与手动切换共用同一常量，保证两种路径观感一致（缺陷 quiet-opacity）。
+function applyQuietOpacity(on) {
+  $("quiet-row").style.opacity = on ? "1" : "0.4";
+}
+
 $("set-quiet").addEventListener("change", () => {
-  $("quiet-row").style.opacity = $("set-quiet").checked ? "1" : "0.4";
+  applyQuietOpacity($("set-quiet").checked);
 });
 
 $("set-sendtest").addEventListener("click", async () => {
@@ -399,6 +450,7 @@ $("sel-archive").addEventListener("click", async () => {
     const ids = [...state.selected];
     await invoke("archive_messages", { ids, archived: state.view !== "archive" });
     state.selected.clear();
+    refreshBatchBar();
     await loadHistory();
   } catch (err) { report(err); }
 });
@@ -418,6 +470,7 @@ $("sel-delete").addEventListener("click", async () => {
   try {
     await invoke("delete_messages", { ids: [...state.selected] });
     state.selected.clear();
+    refreshBatchBar();
     await loadHistory();
   } catch (err) { report(err); }
 });
